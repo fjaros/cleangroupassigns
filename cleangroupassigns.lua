@@ -60,7 +60,7 @@ local function AddToPlayerTable(name, class, raidIndex)
 		playerTable[name] = {}
 	end
 	playerTable[name].class = class
-	playerTable[name].classColor = RAID_CLASS_COLORS[class:upper()]
+	playerTable[name].classColor = RAID_CLASS_COLORS[class]
 	if raidIndex then
 		playerTable[name].raidIndex = raidIndex
 	end
@@ -73,7 +73,8 @@ local function GetRaidPlayers()
 		table.insert(subGroups, {})
 	end
 	for index = 1, 40 do
-		local name, _, subgroup, _, class = GetRaidRosterInfo(index)
+		-- setting fileName as class, since it should be language agnostic
+		local name, _, subgroup, _, _, class = GetRaidRosterInfo(index)
 		if name then
 			name = strSplit(name, "-")[1]
 			table.insert(subGroups[subgroup], name)
@@ -309,7 +310,7 @@ function cleangroupassigns:FillPlayerBank()
 	-- Grab >= level 58 from guild roster
 	local numGuildMembers = GetNumGuildMembers()
 	for i = 1, numGuildMembers do
-		local name, _, _, level, class = GetGuildRosterInfo(i)
+		local name, _, _, level, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
 		name = strSplit(name, "-")[1]
 		if level >= 58 then
 			AddToPlayerTable(name, class)
