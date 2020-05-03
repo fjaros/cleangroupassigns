@@ -24,6 +24,9 @@ local inSwap = false
 local remoteInSwap = false
 local swapCounter = 0
 
+local isDraggingLabel = false
+local shouldUpdatePlayerBank = false
+
 local function strSplit(str, sep)
    local sep, fields = sep, {}
    local pattern = string.format("([^%s]+)", sep)
@@ -55,7 +58,7 @@ local function AddToPlayerTable(name, class, raidIndex)
 	if not name then
 		return
 	end
-	
+
 	if not playerTable[name] then
 		playerTable[name] = {}
 	end
@@ -98,7 +101,7 @@ end
 
 function cleangroupassigns:PopulateArrangements()
 	self.arrangements:ReleaseChildren()
-	
+
 	local populate = function(index)
 		local arrangement = arrangementsDB[index]
 		local label = AceGUI:Create("InteractiveLabel")
@@ -125,7 +128,7 @@ function cleangroupassigns:PopulateArrangements()
 		end)
 		self.arrangements:AddChild(label)
 	end
-	
+
 	-- sort by name, but prefer yourself first
 	local arrangementKeys = {}
 	for index, arrangement in ipairs(arrangementsDB) do
@@ -133,18 +136,18 @@ function cleangroupassigns:PopulateArrangements()
 			arrangementKeys[arrangement.name] = index
 		end
 	end
-	
+
 	for _, index in pairsByKeys(arrangementKeys) do
 		populate(index)
 	end
-	
+
 	local arrangementKeys = {}
 	for index, arrangement in ipairs(arrangementsDB) do
 		if arrangement.owner then
 			arrangementKeys[arrangement.name] = index
 		end
 	end
-	
+
 	for _, index in pairsByKeys(arrangementKeys) do
 		populate(index)
 	end
@@ -199,7 +202,7 @@ function cleangroupassigns:RearrangeGroup(row)
 	for tail = col, 5 do
 		self:ClearLabel(labels[row][tail])
 	end
-	
+
 	self:CheckArrangable()
 end
 
@@ -209,7 +212,7 @@ function cleangroupassigns:MovedToSubgroup(label, toRow, toCol)
 	--print(toRow .. "," .. toCol .. ": " .. sourceName .. " MOVED TO " .. (destinationName or "Empty"))
 	self:SetLabel(labels[toRow][toCol], sourceName)
 	self:RearrangeGroup(toRow)
-	
+
 	self:SetLabel(label, destinationName)
 	self:RearrangeGroup(label.row)
 end
@@ -291,7 +294,7 @@ end
 
 function cleangroupassigns:FillCurrentRaid()
 	self:ClearAllLabels()
-	
+
 	local raidPlayers = GetRaidPlayers()
 	for name, player in pairs(raidPlayers) do
 		local label = labels[player.subgroup][player.subgroupPosition]
@@ -303,9 +306,10 @@ function cleangroupassigns:FillCurrentRaid()
 end
 
 function cleangroupassigns:FillPlayerBank()
-	self.playerBank:ReleaseChildren()
-	local scroll = AceGUI:Create("ScrollFrame")
-	scroll:SetLayout("Flow")
+	if isDraggingLabel then
+		shouldUpdatePlayerBank = true
+		return
+	end
 
 	-- Grab >= level 58 from guild roster
 	local numGuildMembers = GetNumGuildMembers()
@@ -324,74 +328,94 @@ function cleangroupassigns:FillPlayerBank()
 		end
 	end
 	table.sort(playerTableNames)
-	
+
 	local raidPlayers = GetRaidPlayers()
 
+	local index = 0
+	local playerLabels = self.playerBank.scroll.playerLabels
 	for _, name in ipairs(playerTableNames) do
 		if not cgaConfigDB.filterCheck or raidPlayers[name] then
-			local playerLabel = AceGUI:Create("InteractiveLabel")
-			playerLabel:SetFont("Fonts\\FRIZQT__.ttf", 12)
+			index = index + 1
+			local playerLabel
+			if playerLabels[index] then
+				playerLabel = playerLabels[index]
+			else
+				playerLabel = AceGUI:Create("InteractiveLabel")
+				playerLabel:SetFont("Fonts\\FRIZQT__.ttf", 12)
+				playerLabel:SetHighlight("Interface\\BUTTONS\\UI-Listbox-Highlight.blp")
+				playerLabel:SetFullWidth(true)
+
+				local anchorPoint, parentFrame, relativeTo, ptX, ptY
+				playerLabel.frame:EnableMouse(true)
+				playerLabel.frame:SetMovable(true)
+				playerLabel.frame:RegisterForDrag("LeftButton")
+				playerLabel.frame:SetScript("OnDragStart", function(self)
+					isDraggingLabel = true
+					for row = 1, 8 do
+						for col = 1, 5 do
+							local label = labels[row][col]
+							local left, top, width, height = label.frame:GetRect()
+							label.savedRect = {}
+							label.savedRect.left = left
+							label.savedRect.top = top
+							label.savedRect.width = width
+							label.savedRect.height = height
+						end
+					end
+					anchorPoint, parentFrame, relativeTo, ptX, ptY = self:GetPoint()
+					self:SetParent(UIParent)
+					self:SetFrameStrata("TOOLTIP")
+					self:StartMoving()
+				end)
+
+				playerLabel.frame:SetScript("OnDragStop", function(self)
+					self:StopMovingOrSizing()
+					local x, y = GetXY()
+					local putToGroup = function()
+						for row = 1, 8 do
+							for col = 1, 5 do
+								local label = labels[row][col]
+								local cLeft, cTop, cWidth, cHeight = labels[row][col].SavedRect
+								if x >= label.savedRect.left and x <= label.savedRect.left + label.savedRect.width and y >= label.savedRect.top and y <= label.savedRect.top + label.savedRect.height then
+									cleangroupassigns:SetLabel(labels[row][col], playerLabel.name)
+									cleangroupassigns:RearrangeGroup(row)
+									return true
+								end
+							end
+						end
+						return false
+					end
+
+					self:SetParent(parentFrame)
+					playerLabel:ClearAllPoints()
+					playerLabel:SetPoint(anchorPoint, parentFrame, relativeTo, ptX, ptY)
+					playerLabel.frame:SetFrameStrata("TOOLTIP")
+					isDraggingLabel = false
+					if putToGroup() or shouldUpdatePlayerBank then
+						shouldUpdatePlayerBank = false
+						cleangroupassigns:FillPlayerBank()
+					end
+				end)
+
+				self.playerBank.scroll:AddChild(playerLabel)
+				table.insert(playerLabels, playerLabel)
+			end
+
 			playerLabel.name = name
 			playerLabel:SetText(name)
 			local classColor = playerTable[name].classColor
 			playerLabel.label:SetTextColor(classColor.r, classColor.g, classColor.b)
-			
-			playerLabel:SetHighlight("Interface\\BUTTONS\\UI-Listbox-Highlight.blp")
-			playerLabel:SetFullWidth(true)
-			
-			local anchorPoint, parentFrame, relativeTo, ptX, ptY
-			playerLabel.frame:EnableMouse(true)
-			playerLabel.frame:SetMovable(true)
-			playerLabel.frame:RegisterForDrag("LeftButton")
-			playerLabel.frame:SetScript("OnDragStart", function(self)
-				for row = 1, 8 do
-					for col = 1, 5 do
-						local label = labels[row][col]
-						local left, top, width, height = label.frame:GetRect()
-						label.savedRect = {}
-						label.savedRect.left = left
-						label.savedRect.top = top
-						label.savedRect.width = width
-						label.savedRect.height = height
-					end
-				end
-				anchorPoint, parentFrame, relativeTo, ptX, ptY = self:GetPoint()
-				self:SetParent(UIParent)
-				self:SetFrameStrata("TOOLTIP")
-				self:StartMoving()
-			end)
-			playerLabel.frame:SetScript("OnDragStop", function(self)
-				self:StopMovingOrSizing()
-				local x, y = GetXY()
-				local putToGroup = function()
-					for row = 1, 8 do
-						for col = 1, 5 do
-							local label = labels[row][col]
-							local cLeft, cTop, cWidth, cHeight = labels[row][col].SavedRect
-							if x >= label.savedRect.left and x <= label.savedRect.left + label.savedRect.width and y >= label.savedRect.top and y <= label.savedRect.top + label.savedRect.height then
-								cleangroupassigns:SetLabel(labels[row][col], name)
-								cleangroupassigns:RearrangeGroup(row)
-								return true
-							end
-						end
-					end
-					return false
-				end
-				
-				if putToGroup() then
-					cleangroupassigns:FillPlayerBank()
-				else
-					playerLabel:ClearAllPoints()
-					playerLabel:SetPoint(anchorPoint, parentFrame, relativeTo, ptX, ptY)
-					playerLabel.frame:SetFrameStrata("TOOLTIP")
-				end
-			end)
-			
-			scroll:AddChild(playerLabel)
+			playerLabel.frame:Show()
 		end
 	end
-	
-	self.playerBank:AddChild(scroll)
+
+	while index < #playerLabels do
+		index = index + 1
+		playerLabels[index].name = nil
+		playerLabels[index]:SetText(nil)
+	end
+
+	self.playerBank.scroll:DoLayout()
 end
 
 function cleangroupassigns:DoSwap()
@@ -425,7 +449,7 @@ function cleangroupassigns:DoSwap()
 							break
 						end
 					end
-					
+
 					--print("SwapRaidSubgroup(" .. targetName .. ", " .. (nameToSwap or "nil") .. ") " .. #subGroups[row])
 					SwapRaidSubgroup(raidPlayers[targetName].index, raidPlayers[nameToSwap].index)
 				else
@@ -479,7 +503,7 @@ function cleangroupassigns:CheckArrangable()
 	self.currentRaid:SetDisabled(false)
 	self.currentRaid.frame:EnableMouse(true)
 	self.currentRaid.text:SetTextColor(self.currentRaid.textColor.r, self.currentRaid.textColor.g, self.currentRaid.textColor.b)
-	
+
 	local raidPlayers = GetRaidPlayers()
 	local labelPlayers = {}
 	local shouldExit = false
@@ -499,14 +523,14 @@ function cleangroupassigns:CheckArrangable()
 	if shouldExit then
 		return
 	end
-	
+
 	for name, _ in pairs(raidPlayers) do
 		if not labelPlayers[name] then
 			self:SetUnarrangable("CANNOT REARRANGE - " .. name .. " IS NOT IN THE SETUP")
 			return
 		end
 	end
-	
+
 	if not IsRaidAssistant() then
 		self:SetUnarrangable("CANNOT REARRANGE - NOT A RAID LEADER OR ASSISTANT")
 		return
@@ -562,13 +586,13 @@ function cleangroupassigns:OnCommReceived(prefix, message, distribution, sender)
 		print("Failed to decompress message: " .. err)
 		return
 	end
-	
+
 	local didDeserialize, message = self:Deserialize(decompressed)
 	if not didDeserialize then
 		print("Failed to deserialize sync: " .. message)
 		return
 	end
-	
+
 	local key = message["key"]
 	if not key then
 		print("Failed to parse deserialized comm.")
@@ -580,13 +604,13 @@ function cleangroupassigns:OnCommReceived(prefix, message, distribution, sender)
 		self:SetUnarrangable("REARRANGEMENT IN PROGRESS BY " .. sender)
 		return
 	end
-	
+
 	if key == "SWAP_END" then
 		remoteInSwap = false
 		self:CheckArrangable()
 		return
 	end
-	
+
 	if key == "ASK_ARRANGEMENTS" then
 		local filteredArrangements = {}
 		for _, arrangement in ipairs(arrangementsDB) do
@@ -594,7 +618,7 @@ function cleangroupassigns:OnCommReceived(prefix, message, distribution, sender)
 				table.insert(filteredArrangements, arrangement)
 			end
 		end
-	
+
 		local response = {
 			key = "ARRANGEMENTS",
 			asker = sender,
@@ -603,7 +627,7 @@ function cleangroupassigns:OnCommReceived(prefix, message, distribution, sender)
 		self:SendComm(response)
 		return
 	end
-	
+
 	if key == "ARRANGEMENTS" and message["asker"] == UnitName("player") and IsRaidAssistant(sender) and message["value"] then
 		for _, arrangement in ipairs(message["value"]) do
 			arrangement.owner = sender
@@ -624,13 +648,13 @@ function cleangroupassigns:OnEnable()
 	self.f:SetHeight(572)
 	_G["cleangroupassignsFrame"] = self.f.frame
 	table.insert(UISpecialFrames, "cleangroupassignsFrame")
-	
+
 	local iconDataBroker = LibStub("LibDataBroker-1.1"):NewDataObject("cleangroupassignsMinimapIcon", {
 		type = "data source",
 		text = "clean group assigns",
 		label = "clean group assigns",
 		icon = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_7",
-		OnClick = function() 
+		OnClick = function()
 			if self.f:IsVisible() then
 				self.f:Hide()
 			else
@@ -645,12 +669,12 @@ function cleangroupassigns:OnEnable()
 	local minimapIcon = LibStub("LibDBIcon-1.0")
 	minimapIcon:Register("cleangroupassignsMinimapIcon", iconDataBroker, minimapButtonDB)
 	minimapIcon:Show()
-	
+
 	self.raidViews = AceGUI:Create("InlineGroup")
 	self.raidViews:SetWidth(200)
 	self.raidViews:SetTitle("Raid Arrangements")
 	self.raidViews:SetLayout("Fill")
-	
+
 	self.fetchArrangements = AceGUI:Create("Button")
 	self.fetchArrangements:SetWidth(self.raidViews.frame:GetWidth())
 	self.fetchArrangements:SetText("Fetch Arrangements")
@@ -662,28 +686,32 @@ function cleangroupassigns:OnEnable()
 	self.fetchArrangements.textColor.b = b
 
 	self.arrangementsDrowndownMenu = _G["cleangroupassignsDropdownMenu"]:New()
-	self.arrangementsDrowndownMenu:AddItem("Delete", function() 
+	self.arrangementsDrowndownMenu:AddItem("Delete", function()
 		table.remove(arrangementsDB, self.arrangementsDrowndownMenu.clickedEntry)
 		cleangroupassigns:PopulateArrangements()
-	end)	
+	end)
 	self.arrangements = AceGUI:Create("ScrollFrame")
 	self.arrangements:SetLayout("Flow")
 	self.raidViews:AddChild(self.arrangements)
-	
+
 	self.playerBank = AceGUI:Create("InlineGroup")
 	self.playerBank:SetWidth(200)
 	self.playerBank:SetTitle("Player Bank")
 	self.playerBank:SetLayout("Fill")
-	
+	self.playerBank.scroll = AceGUI:Create("ScrollFrame")
+	self.playerBank.scroll:SetLayout("Flow")
+	self.playerBank.scroll.playerLabels = {}
+	self.playerBank:AddChild(self.playerBank.scroll)
+
 	self.filterCheck = AceGUI:Create("CheckBox")
 	self.filterCheck:SetWidth(self.playerBank.frame:GetWidth())
 	self.filterCheck:SetValue(cgaConfigDB.filterCheck)
 	self.filterCheck:SetLabel("Show Only Players In Raid")
 	self.filterCheck:SetCallback("OnValueChanged", function(_, _, value)
 		cgaConfigDB.filterCheck = value
-		self:FillPlayerBank() 
+		self:FillPlayerBank()
 	end)
-	
+
 	local raidGroups = {}
 	for row = 1, 8 do
 		local raidGroup = AceGUI:Create("InlineGroup")
@@ -715,7 +743,7 @@ function cleangroupassigns:OnEnable()
 		self.raidViews:AddChild(raidGroup)
 		table.insert(raidGroups, raidGroup)
 	end
-	
+
 	self.currentRaid = AceGUI:Create("Button")
 	self.currentRaid:SetText("Copy Current Raid")
 	self.currentRaid:SetCallback("OnClick", function() self:FillCurrentRaid() end)
@@ -724,10 +752,10 @@ function cleangroupassigns:OnEnable()
 	self.currentRaid.textColor.r = r
 	self.currentRaid.textColor.g = g
 	self.currentRaid.textColor.b = b
-	
+
 	local saveRaid = AceGUI:Create("Button")
 	saveRaid:SetText("Save Arrangement")
-	
+
 	local inEditingState = false
 	saveRaid:SetCallback("OnClick", function()
 		if inEditingState then
@@ -759,7 +787,7 @@ function cleangroupassigns:OnEnable()
 		inEditingState = true
 		cleangroupassigns.arrangements:AddChild(editBox)
 	end)
-	
+
 	self.rearrangeRaid = AceGUI:Create("Button")
 	self.rearrangeRaid:SetText("REARRANGE RAID")
 	self.rearrangeRaid.textColor = {}
@@ -771,7 +799,7 @@ function cleangroupassigns:OnEnable()
 		swapCounter = 0
 		self:DoSwap()
 	end)
-	
+
 	AceGUI:RegisterLayout("MainLayout", function()
 		self.raidViews:SetHeight(496 - self.filterCheck.frame:GetHeight())
 		self.raidViews:SetPoint("TOPLEFT", self.f.frame, "TOPLEFT", 10, -28)
@@ -779,7 +807,7 @@ function cleangroupassigns:OnEnable()
 		self.playerBank:SetHeight(self.raidViews.frame:GetHeight())
 		self.playerBank:SetPoint("TOPLEFT", self.raidViews.frame, "TOPRIGHT", 2, 0)
 		self.filterCheck:SetPoint("TOPLEFT", self.playerBank.frame, "BOTTOMLEFT", 0, -6)
-	
+
 		self.f:SetWidth(764)
 		self.f:SetHeight(572)
 		raidGroups[1]:SetPoint("TOPLEFT", self.playerBank.frame, "TOPRIGHT", 2, 0)
@@ -790,16 +818,16 @@ function cleangroupassigns:OnEnable()
 		raidGroups[6]:SetPoint("TOPLEFT", raidGroups[5].frame, "TOPRIGHT", 2, 0)
 		raidGroups[7]:SetPoint("TOPLEFT", raidGroups[5].frame, "BOTTOMLEFT", 0, 0)
 		raidGroups[8]:SetPoint("TOPLEFT", raidGroups[7].frame, "TOPRIGHT", 2, 0)
-		
+
 		self.currentRaid:SetPoint("TOPLEFT", raidGroups[7].frame, "BOTTOMLEFT", 0, -8)
 		self.currentRaid:SetWidth(raidGroups[7].frame:GetWidth())
 		saveRaid:SetPoint("TOPLEFT", raidGroups[8].frame, "BOTTOMLEFT", 0, -8)
 		saveRaid:SetWidth(raidGroups[8].frame:GetWidth())
-		
+
 		self.rearrangeRaid:SetPoint("TOPLEFT", self.currentRaid.frame, "BOTTOMLEFT", 0, -2)
 		self.rearrangeRaid:SetWidth(self.currentRaid.frame:GetWidth() * 2 + 2)
 	end)
-	
+
 	self:PopulateArrangements()
 	self.f:AddChild(self.raidViews)
 	self.f:AddChild(self.playerBank)
@@ -808,9 +836,9 @@ function cleangroupassigns:OnEnable()
 	self.f:AddChild(self.currentRaid)
 	self.f:AddChild(saveRaid)
 	self.f:AddChild(self.rearrangeRaid)
-	
+
 	self.f:SetLayout("MainLayout")
-		
+
 	self:OnRosterUpdate()
 	self:HookScript(self.f.frame, "OnShow", function() self:FillCurrentRaid() end)
 	self:RegisterEvent("GROUP_ROSTER_UPDATE", function() self:OnRosterUpdate() end)

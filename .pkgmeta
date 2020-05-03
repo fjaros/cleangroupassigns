@@ -1,0 +1,4 @@
+ignore:
+	- example.png
+	- LICENSE
+	- README.md
