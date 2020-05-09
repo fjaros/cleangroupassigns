@@ -12,3 +12,8 @@ Written by Munchkin \<clean\> on Fairbanks-US.
 - Show Only Players In Raid will limit the player bank to only show players in the current raid group.
 - Copy Current Raid discards the current arrangement if unsaved, replacing it with the current raid arrangement.
 - REARRANGE RAID will change the groups to reflect your setup.
+
+- /cga list - show list of available presets.
+- /cga go [index] - rearrange raid based on the preset.
+- /cga show - open UI.
+- /cga hide - close UI.

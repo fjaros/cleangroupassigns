@@ -5,10 +5,11 @@ https://github.com/fjaros/cleangroupassigns
 ]]
 
 cgaConfigDB = {
-	filterCheck = false
+	welcome = false,
+	filterCheck = false,
 }
 minimapButtonDB = {
-	hide = false
+	hide = false,
 }
 arrangementsDB = {}
 
@@ -20,12 +21,19 @@ local AceGUI = LibStub("AceGUI-3.0")
 local playerTable = {}
 local labels = {}
 
+local shouldPrint = false
 local inSwap = false
 local remoteInSwap = false
 local swapCounter = 0
 
 local isDraggingLabel = false
 local shouldUpdatePlayerBank = false
+
+local GLOBAL_PRINT = print
+local print = function(message)
+	message = "|cFFFF7D0A[cga]|r |cFF24A8FF" .. message .. "|r"
+	GLOBAL_PRINT(message)
+end
 
 local function strSplit(str, sep)
    local sep, fields = sep, {}
@@ -63,7 +71,7 @@ local function AddToPlayerTable(name, class, raidIndex)
 		playerTable[name] = {}
 	end
 	playerTable[name].class = class
-	playerTable[name].classColor = RAID_CLASS_COLORS[class]
+	playerTable[name].classColor = RAID_CLASS_COLORS[class:upper()]
 	if raidIndex then
 		playerTable[name].raidIndex = raidIndex
 	end
@@ -99,34 +107,66 @@ local function IsRaidAssistant(player)
 	return UnitIsGroupLeader(player) == true or UnitIsGroupAssistant(player) == true
 end
 
-function cleangroupassigns:PopulateArrangements()
-	self.arrangements:ReleaseChildren()
+function cleangroupassigns:SelectArrangement(labelIndex)
+	local errorMessage = "Invalid index. Use /cga list to show available arrangements."
+	if not labelIndex then
+		return errorMessage
+	end
 
+	local arrangementLabel = self.arrangements.arrangementLabels[labelIndex]
+	if not arrangementLabel then
+		return errorMessage
+	end
+
+	local arrangement = arrangementLabel.arrangement
+	if not arrangement then
+		return errorMessage
+	end
+
+	self:ClearAllLabels()
+	for row = 1, 8 do
+		for col = 1, 5 do
+			local entry = arrangement[row][col]
+			AddToPlayerTable(entry.name, entry.class)
+			self:SetLabel(labels[row][col], entry.name)
+		end
+	end
+	self:FillPlayerBank()
+	return self:CheckArrangable()
+end
+
+function cleangroupassigns:PopulateArrangements()
+	local labelIndex = 0
+	local arrangementLabels = self.arrangements.arrangementLabels
 	local populate = function(index)
+		labelIndex = labelIndex + 1
 		local arrangement = arrangementsDB[index]
-		local label = AceGUI:Create("InteractiveLabel")
-		label:SetFont("Fonts\\FRIZQT__.ttf", 12)
-		label:SetText(arrangement.name)
-		label:SetHighlight("Interface\\Buttons\\UI-Listbox-Highlight")
-		label:SetFullWidth(true)
-		label:SetCallback("OnClick", function()
-			if GetMouseButtonClicked() == "LeftButton" then
-				cleangroupassigns:ClearAllLabels()
-				for row = 1, 8 do
-					for col = 1, 5 do
-						local entry = arrangement[row][col]
-						AddToPlayerTable(entry.name, entry.class)
-						cleangroupassigns:SetLabel(labels[row][col], entry.name)
-					end
+		local label
+		if arrangementLabels[labelIndex] then
+			label = arrangementLabels[labelIndex]
+			label.frame:EnableMouse(true)
+		else
+			label = AceGUI:Create("InteractiveLabel")
+			label:SetFont("Fonts\\FRIZQT__.ttf", 12)
+			label:SetHighlight("Interface\\Buttons\\UI-Listbox-Highlight")
+			label:SetFullWidth(true)
+			label.OnClick = function()
+				if GetMouseButtonClicked() == "LeftButton" then
+					self:SelectArrangement(label.labelIndex)
+				elseif GetMouseButtonClicked() == "RightButton" then
+					cleangroupassigns.arrangementsDrowndownMenu.clickedEntry = label.dbIndex
+					cleangroupassigns.arrangementsDrowndownMenu:Show()
 				end
-				self:FillPlayerBank()
-				self:CheckArrangable()
-			elseif GetMouseButtonClicked() == "RightButton" then
-				cleangroupassigns.arrangementsDrowndownMenu.clickedEntry = index
-				cleangroupassigns.arrangementsDrowndownMenu:Show()
 			end
-		end)
-		self.arrangements:AddChild(label)
+			label:SetCallback("OnClick", label.OnClick)
+			self.arrangements:AddChild(label)
+			table.insert(arrangementLabels, label)
+		end
+
+		label.dbIndex = index
+		label.labelIndex = labelIndex
+		label.arrangement = arrangement
+		label:SetText(arrangement.name)
 	end
 
 	-- sort by name, but prefer yourself first
@@ -151,6 +191,15 @@ function cleangroupassigns:PopulateArrangements()
 	for _, index in pairsByKeys(arrangementKeys) do
 		populate(index)
 	end
+
+	while labelIndex < #arrangementLabels do
+		labelIndex = labelIndex + 1
+		arrangementLabels[labelIndex].arrangement = nil
+		arrangementLabels[labelIndex]:SetText(nil)
+		arrangementLabels[labelIndex].frame:EnableMouse(false)
+	end
+
+	self.arrangements:DoLayout()
 end
 
 function cleangroupassigns:AddArrangement(receivedArrangement)
@@ -339,6 +388,7 @@ function cleangroupassigns:FillPlayerBank()
 			local playerLabel
 			if playerLabels[index] then
 				playerLabel = playerLabels[index]
+				playerLabel.frame:EnableMouse(true)
 			else
 				playerLabel = AceGUI:Create("InteractiveLabel")
 				playerLabel:SetFont("Fonts\\FRIZQT__.ttf", 12)
@@ -405,7 +455,6 @@ function cleangroupassigns:FillPlayerBank()
 			playerLabel:SetText(name)
 			local classColor = playerTable[name].classColor
 			playerLabel.label:SetTextColor(classColor.r, classColor.g, classColor.b)
-			playerLabel.frame:Show()
 		end
 	end
 
@@ -413,6 +462,7 @@ function cleangroupassigns:FillPlayerBank()
 		index = index + 1
 		playerLabels[index].name = nil
 		playerLabels[index]:SetText(nil)
+		playerLabels[index].frame:EnableMouse(false)
 	end
 
 	self.playerBank.scroll:DoLayout()
@@ -471,6 +521,10 @@ function cleangroupassigns:StopSwap()
 	for row = 1, 8 do
 		self:RearrangeGroup(row)
 	end
+	if shouldPrint then
+		print("DONE!")
+		shouldPrint = false
+	end
 end
 
 function cleangroupassigns:OnRosterUpdate()
@@ -486,6 +540,7 @@ function cleangroupassigns:OnRosterUpdate()
 end
 
 function cleangroupassigns:CheckArrangable()
+	local errorMessage
 	if not IsInRaid() then
 		self.fetchArrangements:SetDisabled(true)
 		self.fetchArrangements.frame:EnableMouse(false)
@@ -493,8 +548,9 @@ function cleangroupassigns:CheckArrangable()
 		self.currentRaid:SetDisabled(true)
 		self.currentRaid.frame:EnableMouse(false)
 		self.currentRaid.text:SetTextColor(0.35, 0.35, 0.35)
-		self:SetUnarrangable("CANNOT REARRANGE - NOT IN A RAID GROUP")
-		return
+		errorMessage = "CANNOT REARRANGE - NOT IN A RAID GROUP"
+		self:SetUnarrangable(errorMessage)
+		return errorMessage
 	end
 
 	self.fetchArrangements:SetDisabled(false)
@@ -512,7 +568,8 @@ function cleangroupassigns:CheckArrangable()
 			local name = labels[row][col].name
 			if name then
 				if not raidPlayers[name] then
-					self:SetUnarrangable("CANNOT REARRANGE - " .. name .. " IS NOT IN THE RAID")
+					errorMessage = "CANNOT REARRANGE - " .. name .. " IS NOT IN THE RAID"
+					self:SetUnarrangable(errorMessage)
 					labels[row][col].text:SetTextColor(RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b)
 					shouldExit = true
 				end
@@ -521,19 +578,21 @@ function cleangroupassigns:CheckArrangable()
 		end
 	end
 	if shouldExit then
-		return
+		return errorMessage
 	end
 
 	for name, _ in pairs(raidPlayers) do
 		if not labelPlayers[name] then
-			self:SetUnarrangable("CANNOT REARRANGE - " .. name .. " IS NOT IN THE SETUP")
-			return
+			errorMessage = "CANNOT REARRANGE - " .. name .. " IS NOT IN THE SETUP"
+			self:SetUnarrangable(errorMessage)
+			return errorMessage
 		end
 	end
 
 	if not IsRaidAssistant() then
-		self:SetUnarrangable("CANNOT REARRANGE - NOT A RAID LEADER OR ASSISTANT")
-		return
+		errorMessage = "CANNOT REARRANGE - NOT A RAID LEADER OR ASSISTANT"
+		self:SetUnarrangable(errorMessage)
+		return errorMessage
 	end
 
 	self.rearrangeRaid:SetText("REARRANGE RAID")
@@ -547,6 +606,12 @@ function cleangroupassigns:SetUnarrangable(text)
 	self.rearrangeRaid:SetDisabled(true)
 	self.rearrangeRaid.frame:EnableMouse(false)
 	self.rearrangeRaid.text:SetTextColor(0.35, 0.35, 0.35)
+end
+
+function cleangroupassigns:RearrangeRaid()
+	inSwap = true
+	swapCounter = 0
+	self:DoSwap()
 end
 
 function cleangroupassigns:SendInProgress()
@@ -640,6 +705,10 @@ function cleangroupassigns:OnCommReceived(prefix, message, distribution, sender)
 end
 
 function cleangroupassigns:OnEnable()
+	if not cgaConfigDB["welcome"] then
+		print("Welcome to cleangroupassigns. Use the minimap button or /cga show to open.")
+		cgaConfigDB["welcome"] = true
+	end
 	self.f = AceGUI:Create("Window")
 	self.f:Hide()
 	self.f:SetTitle("<clean> group assignments")
@@ -662,7 +731,7 @@ function cleangroupassigns:OnEnable()
 			end
 		end,
 	    OnTooltipShow = function(tooltip)
-			tooltip:SetText("clean group assigns")
+			tooltip:SetText("|cFFFF7D0Aclean group assigns|r\n|cFFFF7D0A/cga list|r|cFF24A8FF: Print current arrangements|r\n|cFFFF7D0A/cga go [index]|r|cFF24A8FF: Sort raid group|r")
 			tooltip:Show()
 		end,
 	})
@@ -692,6 +761,7 @@ function cleangroupassigns:OnEnable()
 	end)
 	self.arrangements = AceGUI:Create("ScrollFrame")
 	self.arrangements:SetLayout("Flow")
+	self.arrangements.arrangementLabels = {}
 	self.raidViews:AddChild(self.arrangements)
 
 	self.playerBank = AceGUI:Create("InlineGroup")
@@ -761,31 +831,55 @@ function cleangroupassigns:OnEnable()
 		if inEditingState then
 			return
 		end
-		local editBox = AceGUI:Create("EditBox")
-		editBox:SetLabel("Name")
-		editBox:SetFocus()
-		editBox:SetCallback("OnEnterPressed", function()
-			local newEntry = {}
-			newEntry.name = editBox:GetText()
-			if newEntry.name and newEntry.name ~= "" then
-				for row = 1, 8 do
-					newEntry[row] = {}
-					for col = 1, 5 do
-						newEntry[row][col] = {}
-						local playerName = labels[row][col].name
-						if playerName then
-							newEntry[row][col].name = playerName
-							newEntry[row][col].class = playerTable[playerName].class
+		local editBox
+		if self.raidViews.editBox then
+			editBox = self.raidViews.editBox
+			editBox.frame:Show()
+		else
+			editBox = AceGUI:Create("EditBox")
+			editBox:SetLabel("Name")
+			editBox:SetFocus()
+			editBox:SetCallback("OnEnterPressed", function()
+				local newEntry = {}
+				newEntry.name = editBox:GetText()
+				if newEntry.name and newEntry.name ~= "" then
+					for row = 1, 8 do
+						newEntry[row] = {}
+						for col = 1, 5 do
+							newEntry[row][col] = {}
+							local playerName = labels[row][col].name
+							if playerName then
+								newEntry[row][col].name = playerName
+								newEntry[row][col].class = playerTable[playerName].class
+							end
 						end
 					end
+					local found = false
+					for index, arrangement in ipairs(arrangementsDB) do
+						if arrangement.name:upper() == newEntry.name:upper() then
+							arrangementsDB[index] = newEntry
+							found = true
+							break
+						end
+					end
+					if not found then
+						table.insert(arrangementsDB, newEntry)
+					end
 				end
-				table.insert(arrangementsDB, newEntry)
+				inEditingState = false
+				editBox.frame:Hide()
+				self:PopulateArrangements()
+			end)
+			local arrangementLabels = self.arrangements.arrangementLabels
+			if #arrangementLabels > 0 then
+				editBox:SetPoint("TOPLEFT", arrangementLabels[#arrangementLabels].frame, "BOTTOMLEFT", 0, -2)
+			else
+				editBox:SetPoint("TOPLEFT", self.arrangements.frame, "TOPLEFT", 0, -2)
 			end
-			inEditingState = false
-			cleangroupassigns:PopulateArrangements()
-		end)
+			editBox:SetWidth(self.arrangements.frame:GetWidth())
+			self.raidViews:AddChild(editBox)
+		end
 		inEditingState = true
-		cleangroupassigns.arrangements:AddChild(editBox)
 	end)
 
 	self.rearrangeRaid = AceGUI:Create("Button")
@@ -794,11 +888,7 @@ function cleangroupassigns:OnEnable()
 	self.rearrangeRaid.textColor.r = r
 	self.rearrangeRaid.textColor.g = g
 	self.rearrangeRaid.textColor.b = b
-	self.rearrangeRaid:SetCallback("OnClick", function()
-		inSwap = true
-		swapCounter = 0
-		self:DoSwap()
-	end)
+	self.rearrangeRaid:SetCallback("OnClick", function() self:RearrangeRaid() end)
 
 	AceGUI:RegisterLayout("MainLayout", function()
 		self.raidViews:SetHeight(496 - self.filterCheck.frame:GetHeight())
@@ -844,4 +934,62 @@ function cleangroupassigns:OnEnable()
 	self:RegisterEvent("GROUP_ROSTER_UPDATE", function() self:OnRosterUpdate() end)
 	self:RegisterEvent("GUILD_ROSTER_UPDATE", function() self:FillPlayerBank() end)
 	self:RegisterComm("cgassigns")
+end
+
+
+-- Slash Commands Functions
+local SLASH_CMD_FUNCTIONS = {
+	["GO"] = function(args)
+		local labelIndex = tonumber(args)
+		local errorMessage = cleangroupassigns:SelectArrangement(labelIndex)
+		if errorMessage then
+			print(errorMessage)
+		else
+			if inSwap then
+				print("Wait for current rearrangement to complete.")
+			else
+				shouldPrint = true
+				print("REARRANGING...")
+				cleangroupassigns:RearrangeRaid()
+			end
+		end
+	end,
+	["LIST"] = function(args)
+		local arrangementLabels = cleangroupassigns.arrangements.arrangementLabels
+		local atLeastOne = false
+		if #arrangementLabels > 0 then
+			for index, arrangementLabel in ipairs(arrangementLabels) do
+				if not arrangementLabel.arrangement then
+					if not atLeastOne then
+						print("You have no arrangements to list!")
+					end
+					break
+				end
+				atLeastOne = true
+				print(index .. ": " .. arrangementLabel.arrangement.name)
+			end
+		else
+			print("You have no arrangements to list!")
+		end
+	end,
+	["HELP"] = function(args)
+		print("Use /cga list to show arrangements or /cga go [index] to sort the raid.")
+	end,
+	["HIDE"] = function(args)
+		cleangroupassigns.f:Hide()
+	end,
+	["SHOW"] = function(args)
+		cleangroupassigns.f:Show()
+	end,
+}
+
+SLASH_CGA1 = "/cleangroupassignments"
+SLASH_CGA2 = "/cleangroupassigns"
+SLASH_CGA3 = "/cga"
+SlashCmdList["CGA"] = function(message)
+	local _, _, cmd, args = string.find(message:upper(), "%s?(%w+)%s?(.*)")
+	if not SLASH_CMD_FUNCTIONS[cmd] then
+		cmd = "HELP"
+	end
+	SLASH_CMD_FUNCTIONS[cmd](args)
 end
