@@ -31,7 +31,7 @@ local shouldUpdatePlayerBank = false
 
 local GLOBAL_PRINT = print
 local print = function(message)
-	message = "|cFFFF7D0A[cga]|r |cFF24A8FF" .. message .. "|r"
+	message = "|cFFFF7D0A[cga]|r |cFF24A8FF" .. (tostring(message) or "nil") .. "|r"
 	GLOBAL_PRINT(message)
 end
 
@@ -539,7 +539,7 @@ function cleangroupassigns:OnRosterUpdate()
 	end
 end
 
-function cleangroupassigns:CheckArrangable()
+function cleangroupassigns:CheckArrangable(enteredCombat)
 	local errorMessage
 	if not IsInRaid() then
 		self.fetchArrangements:SetDisabled(true)
@@ -591,6 +591,12 @@ function cleangroupassigns:CheckArrangable()
 
 	if not IsRaidAssistant() then
 		errorMessage = "CANNOT REARRANGE - NOT A RAID LEADER OR ASSISTANT"
+		self:SetUnarrangable(errorMessage)
+		return errorMessage
+	end
+
+	if enteredCombat or InCombatLockdown() then
+		errorMessage = "CANNOT REARRANGE - IN COMBAT"
 		self:SetUnarrangable(errorMessage)
 		return errorMessage
 	end
@@ -933,6 +939,8 @@ function cleangroupassigns:OnEnable()
 	self:HookScript(self.f.frame, "OnShow", function() self:FillCurrentRaid() end)
 	self:RegisterEvent("GROUP_ROSTER_UPDATE", function() self:OnRosterUpdate() end)
 	self:RegisterEvent("GUILD_ROSTER_UPDATE", function() self:FillPlayerBank() end)
+	self:RegisterEvent("PLAYER_REGEN_DISABLED", function() self:CheckArrangable(true) end)
+	self:RegisterEvent("PLAYER_REGEN_ENABLED", function() self:CheckArrangable(false) end)
 	self:RegisterComm("cgassigns")
 end
 
