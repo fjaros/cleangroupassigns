@@ -15,6 +15,7 @@ arrangementsDB = {}
 
 local cleangroupassigns = LibStub("AceAddon-3.0"):NewAddon("cleangroupassigns", "AceComm-3.0", "AceEvent-3.0", "AceHook-3.0", "AceSerializer-3.0")
 local libCompress = LibStub("LibCompress")
+local LSM = LibStub('LibSharedMedia-3.0')
 local libCompressET = libCompress:GetAddonEncodeTable()
 local AceGUI = LibStub("AceGUI-3.0")
 
@@ -30,6 +31,8 @@ local isDraggingLabel = false
 local shouldUpdatePlayerBank = false
 
 local GLOBAL_PRINT = print
+local DEFAULT_FONT = LSM.MediaTable.font[LSM:GetDefault('font')];
+
 local print = function(message)
 	message = "|cFFFF7D0A[cga]|r |cFF24A8FF" .. (tostring(message) or "nil") .. "|r"
 	GLOBAL_PRINT(message)
@@ -147,7 +150,7 @@ function cleangroupassigns:PopulateArrangements()
 			label.frame:EnableMouse(true)
 		else
 			label = AceGUI:Create("InteractiveLabel")
-			label:SetFont("Fonts\\FRIZQT__.ttf", 12)
+			label:SetFont(DEFAULT_FONT, 12)
 			label:SetHighlight("Interface\\Buttons\\UI-Listbox-Highlight")
 			label:SetFullWidth(true)
 			label.OnClick = function()
@@ -391,7 +394,7 @@ function cleangroupassigns:FillPlayerBank()
 				playerLabel.frame:EnableMouse(true)
 			else
 				playerLabel = AceGUI:Create("InteractiveLabel")
-				playerLabel:SetFont("Fonts\\FRIZQT__.ttf", 12)
+				playerLabel:SetFont(DEFAULT_FONT, 12)
 				playerLabel:SetHighlight("Interface\\BUTTONS\\UI-Listbox-Highlight.blp")
 				playerLabel:SetFullWidth(true)
 
