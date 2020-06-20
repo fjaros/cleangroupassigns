@@ -12,6 +12,7 @@ minimapButtonDB = {
 	hide = false,
 }
 arrangementsDB = {}
+playerBankDB = {}
 
 local cleangroupassigns = LibStub("AceAddon-3.0"):NewAddon("cleangroupassigns", "AceComm-3.0", "AceEvent-3.0", "AceHook-3.0", "AceSerializer-3.0")
 local libCompress = LibStub("LibCompress")
@@ -65,19 +66,79 @@ local function GetXY()
 	return x / scale, y / scale
 end
 
+local function PlayerMarkDeleted(name)
+	-- pointless to store the entry if we don't know the player's class
+	if playerTable[name].class then
+		if not playerBankDB[name] then
+			playerBankDB[name] = {}
+		end
+		playerBankDB[name].class = playerTable[name].class:upper()
+		playerBankDB[name].isDeleted = true
+	else
+		playerBankDB[name] = nil
+	end
+	playerTable[name] = nil
+end
+
+local function FindClass(name)
+	-- try to determine class from guild or group or playerBankDB
+	for i = 1, GetNumGuildMembers() do
+		local tmpName, _, _, _, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
+		tmpName = strSplit(tmpName, "-")[1]
+		if name == tmpName then
+			return class
+		end
+	end
+
+	for i = 1, GetNumGroupMembers() do
+		local tmpName, _, _, _, _, class = GetRaidRosterInfo(i)
+		tmpName = strSplit(tmpName, "-")[1]
+		if name == tmpName then
+			return class
+		end
+	end
+
+	if playerBankDB[name] then
+		return playerBankDB[name].class
+	end
+end
+
 local function AddToPlayerTable(name, class, raidIndex)
 	if not name then
 		return
 	end
 
+	name = string.sub(name, 1, 1):upper() .. string.sub(name, 2):lower()
+
 	if not playerTable[name] then
 		playerTable[name] = {}
 	end
-	playerTable[name].class = class
-	playerTable[name].classColor = RAID_CLASS_COLORS[class:upper()]
+	local addedExplicitly = not class
+	if addedExplicitly then
+		class = FindClass(name)
+		if not playerBankDB[name] then
+			playerBankDB[name] = {}
+		end
+	end
+
+	if class then
+		playerTable[name].class = class
+		playerTable[name].classColor = RAID_CLASS_COLORS[class:upper()]
+		if playerBankDB[name] then
+			playerBankDB[name].class = class:upper()
+		end
+	else
+		playerTable[name].classColor = {
+			r = 0.0, g = 1.0, b = 0.0
+		}
+	end
 	if raidIndex then
 		playerTable[name].raidIndex = raidIndex
 	end
+	if playerBankDB[name] and playerBankDB[name].isDeleted then
+		playerBankDB[name].isDeleted = false
+	end
+	return name
 end
 
 local function GetRaidPlayers()
@@ -157,8 +218,8 @@ function cleangroupassigns:PopulateArrangements()
 				if GetMouseButtonClicked() == "LeftButton" then
 					self:SelectArrangement(label.labelIndex)
 				elseif GetMouseButtonClicked() == "RightButton" then
-					cleangroupassigns.arrangementsDrowndownMenu.clickedEntry = label.dbIndex
-					cleangroupassigns.arrangementsDrowndownMenu:Show()
+					self.arrangementsDrowndownMenu.clickedEntry = label.dbIndex
+					self.arrangementsDrowndownMenu:Show()
 				end
 			end
 			label:SetCallback("OnClick", label.OnClick)
@@ -280,7 +341,7 @@ function cleangroupassigns:SetLabel(label, name)
 		label.name = name
 		label:SetText(name)
 		local classColor = playerTable[name].classColor
-		label.text:SetTextColor(classColor.r, classColor.g, classColor.b)
+		label.label:SetTextColor(classColor.r, classColor.g, classColor.b)
 		label.frame:EnableMouse(true)
 		label.frame:SetMovable(true)
 	else
@@ -290,10 +351,6 @@ end
 
 function cleangroupassigns:LabelFunctionality(label)
 	local anchorPoint, parentFrame, relativeTo, ptX, ptY
-	label.frame:SetScript("OnMouseDown", function(self)
-		-- No Op. Just a hack to keep the button in an unclicked state since SetButtonState in OnDragStart does not work
-	end)
-
 	label.frame:RegisterForDrag("LeftButton")
 	label.frame:SetScript("OnDragStart", function(self)
 		anchorPoint, parentFrame, relativeTo, ptX, ptY = self:GetPoint()
@@ -339,7 +396,7 @@ end
 function cleangroupassigns:ClearLabel(label)
 	label.name = nil
 	label:SetText("Empty")
-	label.text:SetTextColor(0.35, 0.35, 0.35)
+	label.label:SetTextColor(0.35, 0.35, 0.35)
 	label.frame:EnableMouse(false)
 	label.frame:SetMovable(false)
 end
@@ -357,7 +414,7 @@ function cleangroupassigns:FillCurrentRaid()
 	self:CheckArrangable()
 end
 
-function cleangroupassigns:FillPlayerBank()
+function cleangroupassigns:FillPlayerBank(newlyAddedName)
 	if isDraggingLabel then
 		shouldUpdatePlayerBank = true
 		return
@@ -369,7 +426,16 @@ function cleangroupassigns:FillPlayerBank()
 		local name, _, _, level, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
 		name = strSplit(name, "-")[1]
 		if level >= 58 then
-			AddToPlayerTable(name, class)
+			-- Don't add if is deleted
+			if not playerBankDB[name] or not playerBankDB[name].isDeleted then
+				AddToPlayerTable(name, class)
+			end
+		end
+	end
+
+	for name, tbl in pairs(playerBankDB) do
+		if not tbl.isDeleted then
+			AddToPlayerTable(name, tbl.class)
 		end
 	end
 
@@ -384,9 +450,14 @@ function cleangroupassigns:FillPlayerBank()
 	local raidPlayers = GetRaidPlayers()
 
 	local index = 0
+	local newlyAddedNameIndex
 	local playerLabels = self.playerBank.scroll.playerLabels
+	local filterText = self.playerBar:GetText()
 	for _, name in ipairs(playerTableNames) do
-		if not cgaConfigDB.filterCheck or raidPlayers[name] then
+		if (not filterText or string.find(name:upper(), filterText:upper())) and (not cgaConfigDB.filterCheck or raidPlayers[name]) then
+			if name == newlyAddedName then
+				newlyAddedNameIndex = index
+			end
 			index = index + 1
 			local playerLabel
 			if playerLabels[index] then
@@ -397,6 +468,13 @@ function cleangroupassigns:FillPlayerBank()
 				playerLabel:SetFont(DEFAULT_FONT, 12)
 				playerLabel:SetHighlight("Interface\\BUTTONS\\UI-Listbox-Highlight.blp")
 				playerLabel:SetFullWidth(true)
+				local tmpIndex = index
+				playerLabel:SetCallback("OnClick", function()
+					if GetMouseButtonClicked() == "RightButton" then
+						self.playerBank.dropdownMenu.clickedEntry = tmpIndex
+						self.playerBank.dropdownMenu:Show()
+					end
+				end)
 
 				local anchorPoint, parentFrame, relativeTo, ptX, ptY
 				playerLabel.frame:EnableMouse(true)
@@ -468,12 +546,72 @@ function cleangroupassigns:FillPlayerBank()
 		playerLabels[index].frame:EnableMouse(false)
 	end
 
+	if newlyAddedNameIndex then
+		self.playerBank.scroll:SetScroll(newlyAddedNameIndex / (#playerTableNames - 1) * 1000)
+	end
 	self.playerBank.scroll:DoLayout()
+end
+
+function cleangroupassigns:InviteRosterToRaid()
+	if self.inviteToRaid.inviteState == 0 then
+		return
+	end
+
+	if IsInGroup() and not IsInRaid() then
+		ConvertToRaid()
+		return
+	end
+
+	local onlinePlayers = {}
+	local numGuildMembers = GetNumGuildMembers()
+	for i = 1, numGuildMembers do
+		local name, _, _, _, _, _, _, _, online = GetGuildRosterInfo(i)
+		if name then
+			name = strSplit(name, "-")[1]
+			onlinePlayers[name] = online
+		end
+	end
+
+	local playersToInvite = {}
+	for row = 1, 8 do
+		for col = 1, 5 do
+			local name = labels[row][col].name
+			if name and onlinePlayers[name] ~= false and not self.inviteToRaid.pendingInvites[name] and not UnitInRaid(name) and not UnitInParty(name) and name ~= UnitName("player") then
+				playersToInvite[name] = true
+			end
+		end
+	end
+
+	if IsInRaid() then
+		for name, _ in pairs(playersToInvite) do
+			InviteUnit(name)
+		end
+		self.inviteToRaid.inviteState = 0
+		self.inviteToRaid.pendingInvites = {}
+	else
+		-- Invite up to four people, then convert to raid once one joins
+		local numInvited = 0
+		for name, _ in pairs(playersToInvite) do
+			InviteUnit(name)
+			self.inviteToRaid.pendingInvites[name] = true
+			numInvited = numInvited + 1
+			if numInvited >= 4 then
+				break
+			end
+		end
+	end
 end
 
 function cleangroupassigns:DoSwap()
 	if swapCounter > 40 then
-		print("|cFFFF0000Something went wrong, we are still stuck rearranging after 40 swaps. Terminating...|r")
+		print("|cFFFF0000ERROR: Something went wrong, we are still stuck rearranging after 40 swaps. Terminating...|r")
+		self:StopSwap()
+		return
+	end
+
+	local errorMessage = self:CheckArrangable()
+	if errorMessage then
+		print("|cFFFF0000ERROR: " .. errorMessage .. "|r")
 		self:StopSwap()
 		return
 	end
@@ -535,6 +673,11 @@ function cleangroupassigns:OnRosterUpdate()
 		return
 	end
 
+	if self.inviteToRaid.inviteState > 0 then
+		self:InviteRosterToRaid()
+		return
+	end
+
 	if inSwap then
 		self:DoSwap()
 	else
@@ -543,6 +686,28 @@ function cleangroupassigns:OnRosterUpdate()
 end
 
 function cleangroupassigns:CheckArrangable(enteredCombat)
+	local canInviteToRaid
+	for row = 1, 8 do
+		for col = 1, 5 do
+			local name = labels[row][col].name
+			if name and not UnitInParty(name) and not UnitInRaid(name) and name ~= UnitName("player") then
+				canInviteToRaid = true
+				break
+			end
+		end
+		if canInviteToRaid then
+			self.inviteToRaid:SetDisabled(false)
+			self.inviteToRaid.frame:EnableMouse(true)
+			self.inviteToRaid.text:SetTextColor(self.inviteToRaid.textColor.r, self.inviteToRaid.textColor.g, self.inviteToRaid.textColor.b)
+			break
+		end
+	end
+	if not canInviteToRaid then
+		self.inviteToRaid:SetDisabled(true)
+		self.inviteToRaid.frame:EnableMouse(false)
+		self.inviteToRaid.text:SetTextColor(0.35, 0.35, 0.35)
+	end
+
 	local errorMessage
 	if not IsInRaid() then
 		self.fetchArrangements:SetDisabled(true)
@@ -551,11 +716,13 @@ function cleangroupassigns:CheckArrangable(enteredCombat)
 		self.currentRaid:SetDisabled(true)
 		self.currentRaid.frame:EnableMouse(false)
 		self.currentRaid.text:SetTextColor(0.35, 0.35, 0.35)
+		self.filterCheck:SetDisabled(true)
 		errorMessage = "CANNOT REARRANGE - NOT IN A RAID GROUP"
 		self:SetUnarrangable(errorMessage)
 		return errorMessage
 	end
 
+	self.filterCheck:SetDisabled(false)
 	self.fetchArrangements:SetDisabled(false)
 	self.fetchArrangements.frame:EnableMouse(true)
 	self.fetchArrangements.text:SetTextColor(self.fetchArrangements.textColor.r, self.fetchArrangements.textColor.g, self.fetchArrangements.textColor.b)
@@ -573,7 +740,7 @@ function cleangroupassigns:CheckArrangable(enteredCombat)
 				if not raidPlayers[name] then
 					errorMessage = "CANNOT REARRANGE - " .. name .. " IS NOT IN THE RAID"
 					self:SetUnarrangable(errorMessage)
-					labels[row][col].text:SetTextColor(RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b)
+					labels[row][col].label:SetTextColor(RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b)
 					shouldExit = true
 				end
 				labelPlayers[name] = true
@@ -702,7 +869,7 @@ function cleangroupassigns:OnCommReceived(prefix, message, distribution, sender)
 		return
 	end
 
-	if key == "ARRANGEMENTS" and message["asker"] == UnitName("player") and IsRaidAssistant(sender) and message["value"] then
+	if key == "ARRANGEMENTS" and message["asker"] == UnitName("player") and message["value"] then
 		for _, arrangement in ipairs(message["value"]) do
 			arrangement.owner = sender
 			arrangement.name = sender .. "-" .. arrangement.name
@@ -720,10 +887,9 @@ function cleangroupassigns:OnEnable()
 	end
 	self.f = AceGUI:Create("Window")
 	self.f:Hide()
+	self.f:EnableResize(false)
 	self.f:SetTitle("<clean> group assignments")
 	self.f:SetLayout("Flow")
-	self.f:SetWidth(764)
-	self.f:SetHeight(572)
 	_G["cleangroupassignsFrame"] = self.f.frame
 	table.insert(UISpecialFrames, "cleangroupassignsFrame")
 
@@ -766,7 +932,7 @@ function cleangroupassigns:OnEnable()
 	self.arrangementsDrowndownMenu = _G["cleangroupassignsDropdownMenu"]:New()
 	self.arrangementsDrowndownMenu:AddItem("Delete", function()
 		table.remove(arrangementsDB, self.arrangementsDrowndownMenu.clickedEntry)
-		cleangroupassigns:PopulateArrangements()
+		self:PopulateArrangements()
 	end)
 	self.arrangements = AceGUI:Create("ScrollFrame")
 	self.arrangements:SetLayout("Flow")
@@ -781,6 +947,27 @@ function cleangroupassigns:OnEnable()
 	self.playerBank.scroll:SetLayout("Flow")
 	self.playerBank.scroll.playerLabels = {}
 	self.playerBank:AddChild(self.playerBank.scroll)
+	self.playerBank.dropdownMenu = _G["cleangroupassignsDropdownMenu"]:New()
+	self.playerBank.dropdownMenu:AddItem("Delete", function()
+		PlayerMarkDeleted(self.playerBank.scroll.playerLabels[self.playerBank.dropdownMenu.clickedEntry].name)
+		self:FillPlayerBank()
+	end)
+
+	self.playerBar = AceGUI:Create("EditBox")
+	self.playerBar:SetMaxLetters(12)
+	self.playerBar:SetWidth(self.playerBank.frame:GetWidth())
+	self.playerBar:SetLabel("Search/Add Player")
+	self.playerBar.button:SetText("Add")
+	self.playerBar:SetCallback("OnTextChanged", function(self, _, value)
+		self:DisableButton(value == "")
+		cleangroupassigns:FillPlayerBank()
+		cleangroupassigns.playerBank.scroll:SetScroll(0)
+	end)
+	self.playerBar:SetCallback("OnEnterPressed", function(self, _, value)
+		self:SetText("")
+		local name = AddToPlayerTable(value)
+		cleangroupassigns:FillPlayerBank(name)
+	end)
 
 	self.filterCheck = AceGUI:Create("CheckBox")
 	self.filterCheck:SetWidth(self.playerBank.frame:GetWidth())
@@ -799,14 +986,16 @@ function cleangroupassigns:OnEnable()
 		raidGroup.titletext:SetJustifyH("CENTER")
 		labels[row] = {}
 		for col = 1, 5 do
-			labels[row][col] = AceGUI:Create("Button")
+			labels[row][col] = AceGUI:Create("Label")
 			local label = labels[row][col]
+			label:SetFont(DEFAULT_FONT, 12)
+			label:SetJustifyH("CENTER")
 			label.row = row
 			label.col = col
 			label:SetWidth(161)
 			label:SetHeight(20)
 			label:SetText("Empty")
-			label.text:SetTextColor(0.35, 0.35, 0.35)
+			label.label:SetTextColor(0.35, 0.35, 0.35)
 			self:LabelFunctionality(label)
 			raidGroup:AddChild(label)
 		end
@@ -814,11 +1003,12 @@ function cleangroupassigns:OnEnable()
 			for col = 1, 5 do
 				local label = labels[row][col]
 				label:ClearAllPoints()
-				label:SetPoint("TOPLEFT", raidGroup.frame, "TOPLEFT", -1, -1 * ((col - 1) * label.frame:GetHeight() + raidGroup.titletext:GetHeight() - 2))
+				label:SetPoint("TOPLEFT", raidGroup.frame, "TOPLEFT", 0, -1 * ((col - 1) * label.frame:GetHeight() + raidGroup.titletext:GetHeight() + 5 * (col - 1) + 4))
 			end
-			raidGroup:SetHeight(labels[row][1].frame:GetHeight() * 5 + raidGroups[row].titletext:GetHeight())
+			raidGroup:SetHeight(labels[row][1].frame:GetHeight() * 5 + raidGroup.titletext:GetHeight() + 34)
 		end)
 		raidGroup:SetLayout("RaidGroupLayout" .. row)
+		raidGroup:DoLayout()
 		self.raidViews:AddChild(raidGroup)
 		table.insert(raidGroups, raidGroup)
 	end
@@ -891,6 +1081,22 @@ function cleangroupassigns:OnEnable()
 		inEditingState = true
 	end)
 
+	self.inviteToRaid = AceGUI:Create("Button")
+	self.inviteToRaid.inviteState = 0
+	self.inviteToRaid.pendingInvites = {}
+	self.inviteToRaid:SetText("Invite Roster To Raid")
+	self.inviteToRaid.textColor = {}
+	self.inviteToRaid.textColor.r = r
+	self.inviteToRaid.textColor.g = g
+	self.inviteToRaid.textColor.b = b
+	self.inviteToRaid:SetDisabled(true)
+	self.inviteToRaid.frame:EnableMouse(false)
+	self.inviteToRaid.text:SetTextColor(0.35, 0.35, 0.35)
+	self.inviteToRaid:SetCallback("OnClick", function()
+		self.inviteToRaid.inviteState = 1
+		self:InviteRosterToRaid()
+	end)
+
 	self.rearrangeRaid = AceGUI:Create("Button")
 	self.rearrangeRaid:SetText("REARRANGE RAID")
 	self.rearrangeRaid.textColor = {}
@@ -900,15 +1106,16 @@ function cleangroupassigns:OnEnable()
 	self.rearrangeRaid:SetCallback("OnClick", function() self:RearrangeRaid() end)
 
 	AceGUI:RegisterLayout("MainLayout", function()
-		self.raidViews:SetHeight(496 - self.filterCheck.frame:GetHeight())
 		self.raidViews:SetPoint("TOPLEFT", self.f.frame, "TOPLEFT", 10, -28)
-		self.fetchArrangements:SetPoint("TOPLEFT", self.raidViews.frame, "BOTTOMLEFT", 0, -6)
-		self.playerBank:SetHeight(self.raidViews.frame:GetHeight())
+		self.fetchArrangements:SetPoint("TOPLEFT", self.raidViews.frame, "BOTTOMLEFT", 0, -14)
+		self.playerBar:SetHeight(42)
 		self.playerBank:SetPoint("TOPLEFT", self.raidViews.frame, "TOPRIGHT", 2, 0)
-		self.filterCheck:SetPoint("TOPLEFT", self.playerBank.frame, "BOTTOMLEFT", 0, -6)
+		self.playerBank:SetHeight(self.raidViews.frame:GetHeight())
+		self.playerBar:SetPoint("TOPLEFT", self.fetchArrangements.frame, "TOPRIGHT", 2, 19)
+		self.filterCheck:SetPoint("TOPLEFT", self.playerBar.frame, "BOTTOMLEFT", 0, -6)
 
-		self.f:SetWidth(764)
-		self.f:SetHeight(572)
+		self.f:SetWidth(744)
+		self.f:SetHeight(577)
 		raidGroups[1]:SetPoint("TOPLEFT", self.playerBank.frame, "TOPRIGHT", 2, 0)
 		raidGroups[2]:SetPoint("TOPLEFT", raidGroups[1].frame, "TOPRIGHT", 2, 0)
 		raidGroups[3]:SetPoint("TOPLEFT", raidGroups[1].frame, "BOTTOMLEFT", 0, 0)
@@ -918,25 +1125,34 @@ function cleangroupassigns:OnEnable()
 		raidGroups[7]:SetPoint("TOPLEFT", raidGroups[5].frame, "BOTTOMLEFT", 0, 0)
 		raidGroups[8]:SetPoint("TOPLEFT", raidGroups[7].frame, "TOPRIGHT", 2, 0)
 
-		self.currentRaid:SetPoint("TOPLEFT", raidGroups[7].frame, "BOTTOMLEFT", 0, -8)
+		self.currentRaid:SetPoint("TOPLEFT", raidGroups[7].frame, "BOTTOMLEFT", 0, -14)
 		self.currentRaid:SetWidth(raidGroups[7].frame:GetWidth())
-		saveRaid:SetPoint("TOPLEFT", raidGroups[8].frame, "BOTTOMLEFT", 0, -8)
+		saveRaid:SetPoint("TOPLEFT", raidGroups[8].frame, "BOTTOMLEFT", 0, -14)
 		saveRaid:SetWidth(raidGroups[8].frame:GetWidth())
 
-		self.rearrangeRaid:SetPoint("TOPLEFT", self.currentRaid.frame, "BOTTOMLEFT", 0, -2)
+		self.inviteToRaid:SetPoint("TOPLEFT", self.currentRaid.frame, "BOTTOMLEFT", 0, -2)
+		self.inviteToRaid:SetWidth(self.currentRaid.frame:GetWidth())
+
+		self.rearrangeRaid:SetPoint("TOPLEFT", self.inviteToRaid.frame, "BOTTOMLEFT", 0, -2)
 		self.rearrangeRaid:SetWidth(self.currentRaid.frame:GetWidth() * 2 + 2)
+
+		self.raidViews:SetHeight(raidGroups[1].frame:GetHeight() * 4)
+		self.playerBank:SetHeight(self.raidViews.frame:GetHeight())
 	end)
 
 	self:PopulateArrangements()
 	self.f:AddChild(self.raidViews)
-	self.f:AddChild(self.playerBank)
 	self.f:AddChild(self.fetchArrangements)
+	self.f:AddChild(self.playerBar)
+	self.f:AddChild(self.playerBank)
 	self.f:AddChild(self.filterCheck)
 	self.f:AddChild(self.currentRaid)
 	self.f:AddChild(saveRaid)
+	self.f:AddChild(self.inviteToRaid)
 	self.f:AddChild(self.rearrangeRaid)
 
 	self.f:SetLayout("MainLayout")
+	self.f:DoLayout()
 
 	self:OnRosterUpdate()
 	self:HookScript(self.f.frame, "OnShow", function() self:FillCurrentRaid() end)

@@ -14,8 +14,9 @@ Written by Munchkin \<clean\> on Fairbanks-US.
 - Fetch Arrangements will download presets from the raid leader and other raid assistants using the addon.
 - Show Only Players In Raid will limit the player bank to only show players in the current raid group.
 - Copy Current Raid discards the current arrangement if unsaved, replacing it with the current raid arrangement.
+- Invite Roster To Raid will attempt to invite all the players in your current arrangement.
 - REARRANGE RAID will change the groups to reflect your setup.
-
+- Delete arrangements and players from player bank via right click.
 
 
 - /cga list - show list of available presets.
