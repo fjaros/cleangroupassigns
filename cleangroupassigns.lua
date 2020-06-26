@@ -19,6 +19,7 @@ local libCompress = LibStub("LibCompress")
 local LSM = LibStub('LibSharedMedia-3.0')
 local libCompressET = libCompress:GetAddonEncodeTable()
 local AceGUI = LibStub("AceGUI-3.0")
+local DEFAULT_FONT = LSM.MediaTable.font[LSM:GetDefault('font')]
 
 local playerTable = {}
 local labels = {}
@@ -32,11 +33,23 @@ local isDraggingLabel = false
 local shouldUpdatePlayerBank = false
 
 local GLOBAL_PRINT = print
-local DEFAULT_FONT = LSM.MediaTable.font[LSM:GetDefault('font')];
-
 local print = function(message)
 	message = "|cFFFF7D0A[cga]|r |cFF24A8FF" .. (tostring(message) or "nil") .. "|r"
 	GLOBAL_PRINT(message)
+end
+
+local function charLength(str)
+	local b = string.byte(str, 1)
+	if b then
+		if b >= 194 and b < 224 then
+			return 2
+		elseif b >= 224 and b < 240 then
+			return 3
+		elseif b >= 240 and b < 245 then
+			return 4
+		end
+	end
+	return 1
 end
 
 local function strSplit(str, sep)
@@ -108,7 +121,8 @@ local function AddToPlayerTable(name, class, raidIndex)
 		return
 	end
 
-	name = string.sub(name, 1, 1):upper() .. string.sub(name, 2):lower()
+	local cLen = charLength(name)
+	name = string.sub(name, 1, cLen):upper() .. string.sub(name, cLen + 1):lower()
 
 	if not playerTable[name] then
 		playerTable[name] = {}
