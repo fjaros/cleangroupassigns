@@ -2,3 +2,4 @@ ignore:
 	- example.png
 	- LICENSE
 	- README.md
+manual-changelog: CHANGELOG.txt

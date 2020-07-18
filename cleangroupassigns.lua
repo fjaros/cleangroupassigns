@@ -7,6 +7,7 @@ https://github.com/fjaros/cleangroupassigns
 cgaConfigDB = {
 	welcome = false,
 	filterCheck = false,
+	filterRank = 1,
 }
 minimapButtonDB = {
 	hide = false,
@@ -15,10 +16,9 @@ arrangementsDB = {}
 playerBankDB = {}
 
 local cleangroupassigns = LibStub("AceAddon-3.0"):NewAddon("cleangroupassigns", "AceComm-3.0", "AceEvent-3.0", "AceHook-3.0", "AceSerializer-3.0")
-local libCompress = LibStub("LibCompress")
-local LSM = LibStub('LibSharedMedia-3.0')
-local libCompressET = libCompress:GetAddonEncodeTable()
 local AceGUI = LibStub("AceGUI-3.0")
+local LD = LibStub("LibDeflate")
+local LSM = LibStub("LibSharedMedia-3.0")
 local DEFAULT_FONT = LSM.MediaTable.font[LSM:GetDefault('font')]
 
 local playerTable = {}
@@ -50,13 +50,6 @@ local function charLength(str)
 		end
 	end
 	return 1
-end
-
-local function strSplit(str, sep)
-   local sep, fields = sep, {}
-   local pattern = string.format("([^%s]+)", sep)
-   str:gsub(pattern, function(c) fields[#fields + 1] = c end)
-   return fields
 end
 
 local function pairsByKeys(t, f)
@@ -97,7 +90,7 @@ local function FindClass(name)
 	-- try to determine class from guild or group or playerBankDB
 	for i = 1, GetNumGuildMembers() do
 		local tmpName, _, _, _, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
-		tmpName = strSplit(tmpName, "-")[1]
+		tmpName = strsplit("-", tmpName)
 		if name == tmpName then
 			return class
 		end
@@ -105,7 +98,7 @@ local function FindClass(name)
 
 	for i = 1, GetNumGroupMembers() do
 		local tmpName, _, _, _, _, class = GetRaidRosterInfo(i)
-		tmpName = strSplit(tmpName, "-")[1]
+		tmpName = strsplit("-", tmpName)
 		if name == tmpName then
 			return class
 		end
@@ -116,7 +109,7 @@ local function FindClass(name)
 	end
 end
 
-local function AddToPlayerTable(name, class, raidIndex)
+local function AddToPlayerTable(name, class, raidIndex, rankIndex)
 	if not name then
 		return
 	end
@@ -149,6 +142,7 @@ local function AddToPlayerTable(name, class, raidIndex)
 	if raidIndex then
 		playerTable[name].raidIndex = raidIndex
 	end
+	playerTable[name].rankIndex = rankIndex or 1
 	if playerBankDB[name] and playerBankDB[name].isDeleted then
 		playerBankDB[name].isDeleted = false
 	end
@@ -165,7 +159,7 @@ local function GetRaidPlayers()
 		-- setting fileName as class, since it should be language agnostic
 		local name, _, subgroup, _, _, class = GetRaidRosterInfo(index)
 		if name then
-			name = strSplit(name, "-")[1]
+			name = strsplit("-", name)
 			table.insert(subGroups[subgroup], name)
 			raidPlayers[name] = {}
 			raidPlayers[name].index = index
@@ -434,15 +428,31 @@ function cleangroupassigns:FillPlayerBank(newlyAddedName)
 		return
 	end
 
+	local guildRanks = { "All Ranks" }
+	local shouldUpdate = false
+	for i = 1, GuildControlGetNumRanks() do
+		local rank = GuildControlGetRankName(i)
+		if rank ~= self.filterRank.list[i + 1] then
+			shouldUpdate = true
+		end
+		table.insert(guildRanks, rank)
+	end
+
+	if shouldUpdate then
+		self.filterRank:SetList(guildRanks)
+		self.filterRank:SetValue(cgaConfigDB.filterRank)
+		self.filterRank.list = guildRanks
+	end
+
 	-- Grab >= level 58 from guild roster
 	local numGuildMembers = GetNumGuildMembers()
 	for i = 1, numGuildMembers do
-		local name, _, _, level, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
-		name = strSplit(name, "-")[1]
+		local name, _, rankIndex, level, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
+		name = strsplit("-", name)
 		if level >= 58 then
 			-- Don't add if is deleted
 			if not playerBankDB[name] or not playerBankDB[name].isDeleted then
-				AddToPlayerTable(name, class)
+				AddToPlayerTable(name, class, nil, rankIndex + 1)
 			end
 		end
 	end
@@ -468,7 +478,7 @@ function cleangroupassigns:FillPlayerBank(newlyAddedName)
 	local playerLabels = self.playerBank.scroll.playerLabels
 	local filterText = self.playerBar:GetText()
 	for _, name in ipairs(playerTableNames) do
-		if (not filterText or string.find(name:upper(), filterText:upper())) and (not cgaConfigDB.filterCheck or raidPlayers[name]) then
+		if (not filterText or string.find(name:upper(), filterText:upper())) and (not cgaConfigDB.filterCheck or raidPlayers[name]) and (cgaConfigDB.filterRank == 1 or (playerTable[name].rankIndex and cgaConfigDB.filterRank > playerTable[name].rankIndex)) then
 			if name == newlyAddedName then
 				newlyAddedNameIndex = index
 			end
@@ -581,7 +591,7 @@ function cleangroupassigns:InviteRosterToRaid()
 	for i = 1, numGuildMembers do
 		local name, _, _, _, _, _, _, _, online = GetGuildRosterInfo(i)
 		if name then
-			name = strSplit(name, "-")[1]
+			name = strsplit("-", name)
 			onlinePlayers[name] = online
 		end
 	end
@@ -637,7 +647,7 @@ function cleangroupassigns:DoSwap()
 	for row = 1, 8 do
 		for col = 1, 5 do
 			local targetName = labels[row][col].name
-			if targetName and raidPlayers[targetName].subgroup ~= row then
+			if targetName and raidPlayers[targetName] and raidPlayers[targetName].subgroup ~= row then
 				if #subGroups[row] == 5 then
 					-- which name is not supposed to be in this subgroup?
 					local nameToSwap
@@ -746,23 +756,16 @@ function cleangroupassigns:CheckArrangable(enteredCombat)
 
 	local raidPlayers = GetRaidPlayers()
 	local labelPlayers = {}
-	local shouldExit = false
 	for row = 1, 8 do
 		for col = 1, 5 do
 			local name = labels[row][col].name
 			if name then
 				if not raidPlayers[name] then
-					errorMessage = "CANNOT REARRANGE - " .. name .. " IS NOT IN THE RAID"
-					self:SetUnarrangable(errorMessage)
 					labels[row][col].label:SetTextColor(RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b)
-					shouldExit = true
 				end
 				labelPlayers[name] = true
 			end
 		end
-	end
-	if shouldExit then
-		return errorMessage
 	end
 
 	for name, _ in pairs(raidPlayers) do
@@ -826,7 +829,7 @@ function cleangroupassigns:AskForArrangements()
 end
 
 function cleangroupassigns:SendComm(message)
-	local messageSerialized = libCompressET:Encode(libCompress:Compress(self:Serialize(message)))
+	local messageSerialized = LD:EncodeForWoWAddonChannel(LD:CompressDeflate(self:Serialize(message)))
 	self:SendCommMessage("cgassigns", messageSerialized, "RAID")
 end
 
@@ -835,10 +838,14 @@ function cleangroupassigns:OnCommReceived(prefix, message, distribution, sender)
 		return
 	end
 
-	local decoded = libCompressET:Decode(message)
-	local decompressed, err = libCompress:Decompress(decoded)
+	local decoded = LD:DecodeForWoWAddonChannel(message)
+	if not decoded then
+		print("Could not decode addon message. Sender needs to update to the latest version of cleangroupassigns!")
+		return
+	end
+	local decompressed = LD:DecompressDeflate(decoded)
 	if not decompressed then
-		print("Failed to decompress message: " .. err)
+		print("Failed to decompress addon message. Sender needs to update to the latest version of cleangroupassigns!")
 		return
 	end
 
@@ -868,12 +875,11 @@ function cleangroupassigns:OnCommReceived(prefix, message, distribution, sender)
 
 	if key == "ASK_ARRANGEMENTS" then
 		local filteredArrangements = {}
-		for _, arrangement in ipairs(arrangementsDB) do
+		for i, arrangement in ipairs(arrangementsDB) do
 			if not arrangement.owner then
 				table.insert(filteredArrangements, arrangement)
 			end
 		end
-
 		local response = {
 			key = "ARRANGEMENTS",
 			asker = sender,
@@ -895,9 +901,9 @@ function cleangroupassigns:OnCommReceived(prefix, message, distribution, sender)
 end
 
 function cleangroupassigns:OnEnable()
-	if not cgaConfigDB["welcome"] then
+	if not cgaConfigDB.welcome then
 		print("Welcome to cleangroupassigns. Use the minimap button or /cga show to open.")
-		cgaConfigDB["welcome"] = true
+		cgaConfigDB.welcome = true
 	end
 	self.f = AceGUI:Create("Window")
 	self.f:Hide()
@@ -981,6 +987,18 @@ function cleangroupassigns:OnEnable()
 		self:SetText("")
 		local name = AddToPlayerTable(value)
 		cleangroupassigns:FillPlayerBank(name)
+	end)
+
+	self.filterRank = AceGUI:Create("Dropdown")
+	self.filterRank:SetWidth(self.playerBar.frame:GetWidth())
+	self.filterRank:SetLabel("Rank filter")
+	self.filterRank.list = {}
+	if not cgaConfigDB.filterRank then
+		cgaConfigDB.filterRank = 1
+	end
+	self.filterRank:SetCallback("OnValueChanged", function(_, _, value)
+		cgaConfigDB.filterRank = value
+		self:FillPlayerBank()
 	end)
 
 	self.filterCheck = AceGUI:Create("CheckBox")
@@ -1126,10 +1144,11 @@ function cleangroupassigns:OnEnable()
 		self.playerBank:SetPoint("TOPLEFT", self.raidViews.frame, "TOPRIGHT", 2, 0)
 		self.playerBank:SetHeight(self.raidViews.frame:GetHeight())
 		self.playerBar:SetPoint("TOPLEFT", self.fetchArrangements.frame, "TOPRIGHT", 2, 19)
-		self.filterCheck:SetPoint("TOPLEFT", self.playerBar.frame, "BOTTOMLEFT", 0, -6)
+		self.filterRank:SetPoint("TOPLEFT", self.playerBar.frame, "BOTTOMLEFT", 0, -2)
+		self.filterCheck:SetPoint("TOPLEFT", self.filterRank.frame, "BOTTOMLEFT", 0, -2)
 
 		self.f:SetWidth(744)
-		self.f:SetHeight(577)
+		self.f:SetHeight(590)
 		raidGroups[1]:SetPoint("TOPLEFT", self.playerBank.frame, "TOPRIGHT", 2, 0)
 		raidGroups[2]:SetPoint("TOPLEFT", raidGroups[1].frame, "TOPRIGHT", 2, 0)
 		raidGroups[3]:SetPoint("TOPLEFT", raidGroups[1].frame, "BOTTOMLEFT", 0, 0)
@@ -1159,6 +1178,7 @@ function cleangroupassigns:OnEnable()
 	self.f:AddChild(self.fetchArrangements)
 	self.f:AddChild(self.playerBar)
 	self.f:AddChild(self.playerBank)
+	self.f:AddChild(self.filterRank)
 	self.f:AddChild(self.filterCheck)
 	self.f:AddChild(self.currentRaid)
 	self.f:AddChild(saveRaid)
@@ -1174,6 +1194,13 @@ function cleangroupassigns:OnEnable()
 	self:RegisterEvent("GUILD_ROSTER_UPDATE", function() self:FillPlayerBank() end)
 	self:RegisterEvent("PLAYER_REGEN_DISABLED", function() self:CheckArrangable(true) end)
 	self:RegisterEvent("PLAYER_REGEN_ENABLED", function() self:CheckArrangable(false) end)
+	local tlen = 0
+	self:RegisterEvent("CHAT_MSG_ADDON", function(event, prefix, text, channel, sender, target)
+		--if prefix == "cgassigns" then
+			--tlen = tlen + string.len(text)
+			--print(event .. "," .. prefix .. "," .. sender .. "," .. string.len(text))
+		--end
+	end)
 	self:RegisterComm("cgassigns")
 end
 

@@ -1,0 +1,4 @@
+v1.6 - 2020-07-18
+- Added filtering player bank by guild ranks. Non-guild players will only be visible in All Ranks setting.
+- Added possibility to rearrange raid even when a member in the arrangement is not in the raid. The addon will ignore this member.
+- Fixed fetching arrangements getting stuck when fetching too many.

@@ -11,4 +11,5 @@
 	<Include file="LibDBIcon-1.0\lib.xml"/>
 	<Include file="LibCompress\lib.xml"/>
 	<Include file="LibSharedMedia-3.0\lib.xml"/>
+	<Include file="LibDeflate\lib.xml"/>
 </Ui>
