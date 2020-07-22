@@ -391,6 +391,11 @@ function cleangroupassigns:LabelFunctionality(label)
 		label:ClearAllPoints()
 		label:SetPoint(anchorPoint, parentFrame, relativeTo, ptX, ptY)
 	end)
+	label:SetCallback("OnClick", function(self, _, button)
+		if button == "RightButton" then
+			cleangroupassigns:MovedToPlayerBank(self)
+		end
+	end)
 end
 
 function cleangroupassigns:ClearAllLabels()
@@ -710,6 +715,7 @@ function cleangroupassigns:OnRosterUpdate()
 end
 
 function cleangroupassigns:CheckArrangable(enteredCombat)
+	local rearrangeRaidText = "REARRANGE RAID"
 	local canInviteToRaid
 	for row = 1, 8 do
 		for col = 1, 5 do
@@ -737,10 +743,12 @@ function cleangroupassigns:CheckArrangable(enteredCombat)
 		self.fetchArrangements:SetDisabled(true)
 		self.fetchArrangements.frame:EnableMouse(false)
 		self.fetchArrangements.text:SetTextColor(0.35, 0.35, 0.35)
-		self.currentRaid:SetDisabled(true)
-		self.currentRaid.frame:EnableMouse(false)
-		self.currentRaid.text:SetTextColor(0.35, 0.35, 0.35)
 		self.filterCheck:SetDisabled(true)
+		if self.filterCheck:GetValue() then
+			cgaConfigDB.filterCheck = false
+			self.filterCheck:SetValue(false)
+			self:FillPlayerBank()
+		end
 		errorMessage = "CANNOT REARRANGE - NOT IN A RAID GROUP"
 		self:SetUnarrangable(errorMessage)
 		return errorMessage
@@ -750,8 +758,6 @@ function cleangroupassigns:CheckArrangable(enteredCombat)
 	self.fetchArrangements:SetDisabled(false)
 	self.fetchArrangements.frame:EnableMouse(true)
 	self.fetchArrangements.text:SetTextColor(self.fetchArrangements.textColor.r, self.fetchArrangements.textColor.g, self.fetchArrangements.textColor.b)
-	self.currentRaid:SetDisabled(false)
-	self.currentRaid.frame:EnableMouse(true)
 	self.currentRaid.text:SetTextColor(self.currentRaid.textColor.r, self.currentRaid.textColor.g, self.currentRaid.textColor.b)
 
 	local raidPlayers = GetRaidPlayers()
@@ -761,6 +767,9 @@ function cleangroupassigns:CheckArrangable(enteredCombat)
 			local name = labels[row][col].name
 			if name then
 				if not raidPlayers[name] then
+					if rearrangeRaidText == "REARRANGE RAID" then
+						rearrangeRaidText = "REARRANGE RAID (" .. name .. " IS NOT IN THE RAID)"
+					end
 					labels[row][col].label:SetTextColor(RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b)
 				end
 				labelPlayers[name] = true
@@ -770,9 +779,8 @@ function cleangroupassigns:CheckArrangable(enteredCombat)
 
 	for name, _ in pairs(raidPlayers) do
 		if not labelPlayers[name] then
-			errorMessage = "CANNOT REARRANGE - " .. name .. " IS NOT IN THE SETUP"
-			self:SetUnarrangable(errorMessage)
-			return errorMessage
+			rearrangeRaidText = "REARRANGE RAID (" .. name .. " IS NOT IN THE SETUP)"
+			break
 		end
 	end
 
@@ -788,7 +796,7 @@ function cleangroupassigns:CheckArrangable(enteredCombat)
 		return errorMessage
 	end
 
-	self.rearrangeRaid:SetText("REARRANGE RAID")
+	self.rearrangeRaid:SetText(rearrangeRaidText)
 	self.rearrangeRaid:SetDisabled(false)
 	self.rearrangeRaid.frame:EnableMouse(true)
 	self.rearrangeRaid.text:SetTextColor(self.rearrangeRaid.textColor.r, self.rearrangeRaid.textColor.g, self.rearrangeRaid.textColor.b)
@@ -1018,7 +1026,7 @@ function cleangroupassigns:OnEnable()
 		raidGroup.titletext:SetJustifyH("CENTER")
 		labels[row] = {}
 		for col = 1, 5 do
-			labels[row][col] = AceGUI:Create("Label")
+			labels[row][col] = AceGUI:Create("InteractiveLabel")
 			local label = labels[row][col]
 			label:SetFont(DEFAULT_FONT, 12)
 			label:SetJustifyH("CENTER")

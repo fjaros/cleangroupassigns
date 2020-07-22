@@ -1,3 +1,8 @@
+v1.7 - 2020-07-21
+- Allow rearranging raid if the raid contains a player not in the arrangement (previously not possible).
+- Automatically uncheck "Show Only Players in Raid" if not in a raid group.
+- Ability to remove players from an arranagement by right clicking their name.
+
 v1.6 - 2020-07-18
 - Added filtering player bank by guild ranks. Non-guild players will only be visible in All Ranks setting.
 - Added possibility to rearrange raid even when a member in the arrangement is not in the raid. The addon will ignore this member.
