@@ -8,6 +8,7 @@ cgaConfigDB = {
 	welcome = false,
 	filterCheck = false,
 	filterRank = 1,
+	noRed = false,
 }
 minimapButtonDB = {
 	hide = false,
@@ -770,7 +771,12 @@ function cleangroupassigns:CheckArrangable(enteredCombat)
 					if rearrangeRaidText == "REARRANGE RAID" then
 						rearrangeRaidText = "REARRANGE RAID (" .. name .. " IS NOT IN THE RAID)"
 					end
-					labels[row][col].label:SetTextColor(RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b)
+					if not cgaConfigDB.noRed then
+						labels[row][col].label:SetTextColor(RED_FONT_COLOR.r, RED_FONT_COLOR.g, RED_FONT_COLOR.b)
+					else
+						local classColor = playerTable[name].classColor
+						labels[row][col].label:SetTextColor(classColor.r, classColor.g, classColor.b)
+					end
 				end
 				labelPlayers[name] = true
 			end
@@ -1018,6 +1024,15 @@ function cleangroupassigns:OnEnable()
 		self:FillPlayerBank()
 	end)
 
+	self.noRed = AceGUI:Create("CheckBox")
+	self.noRed:SetWidth(self.playerBank.frame:GetWidth())
+	self.noRed:SetValue(cgaConfigDB.noRed)
+	self.noRed:SetLabel("Always show class colors")
+	self.noRed:SetCallback("OnValueChanged", function(_, _, value)
+		cgaConfigDB.noRed = value
+		self:CheckArrangable()
+	end)
+
 	local raidGroups = {}
 	for row = 1, 8 do
 		local raidGroup = AceGUI:Create("InlineGroup")
@@ -1154,9 +1169,10 @@ function cleangroupassigns:OnEnable()
 		self.playerBar:SetPoint("TOPLEFT", self.fetchArrangements.frame, "TOPRIGHT", 2, 19)
 		self.filterRank:SetPoint("TOPLEFT", self.playerBar.frame, "BOTTOMLEFT", 0, -2)
 		self.filterCheck:SetPoint("TOPLEFT", self.filterRank.frame, "BOTTOMLEFT", 0, -2)
+		self.noRed:SetPoint("TOPLEFT", self.fetchArrangements.frame, "BOTTOMLEFT", 0, -2)
 
 		self.f:SetWidth(744)
-		self.f:SetHeight(590)
+		self.f:SetHeight(600)
 		raidGroups[1]:SetPoint("TOPLEFT", self.playerBank.frame, "TOPRIGHT", 2, 0)
 		raidGroups[2]:SetPoint("TOPLEFT", raidGroups[1].frame, "TOPRIGHT", 2, 0)
 		raidGroups[3]:SetPoint("TOPLEFT", raidGroups[1].frame, "BOTTOMLEFT", 0, 0)
@@ -1188,6 +1204,7 @@ function cleangroupassigns:OnEnable()
 	self.f:AddChild(self.playerBank)
 	self.f:AddChild(self.filterRank)
 	self.f:AddChild(self.filterCheck)
+	self.f:AddChild(self.noRed)
 	self.f:AddChild(self.currentRaid)
 	self.f:AddChild(saveRaid)
 	self.f:AddChild(self.inviteToRaid)
