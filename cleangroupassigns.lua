@@ -1027,7 +1027,7 @@ function cleangroupassigns:OnEnable()
 	self.noRed = AceGUI:Create("CheckBox")
 	self.noRed:SetWidth(self.playerBank.frame:GetWidth())
 	self.noRed:SetValue(cgaConfigDB.noRed)
-	self.noRed:SetLabel("Always show class colors")
+	self.noRed:SetLabel("Always Show Class Colors")
 	self.noRed:SetCallback("OnValueChanged", function(_, _, value)
 		cgaConfigDB.noRed = value
 		self:CheckArrangable()
