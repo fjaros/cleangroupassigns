@@ -15,6 +15,7 @@ Written by Munchkin \<clean\> on Fairbanks-US.
 - Show Only Players In Raid will limit the player bank to only show players in the current raid group.
 - Copy Current Raid discards the current arrangement if unsaved, replacing it with the current raid arrangement.
 - Invite Roster To Raid will attempt to invite all the players in your current arrangement.
+- Import Roster enables pasting in players from docs or spreadsheets separated by commas or spaces. Thanks to tobbi007 for helping with this contribution!
 - REARRANGE RAID will change the groups to reflect your setup.
 - Delete arrangements and players from player bank via right click.
 

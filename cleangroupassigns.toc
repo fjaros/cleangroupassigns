@@ -1,8 +1,8 @@
 ## Title: clean group assigns
 ## Author: Munchkin-Fairbanks
 ## Notes: World of Warcraft Classic Addon to automatically sort your raid based on your preset arrangements.
-## Version: 1.7
-## Interface: 11305
+## Version: 1.8
+## Interface: 11306
 ## SavedVariables: cgaConfigDB, arrangementsDB, minimapButtonDB, playerBankDB
 
 Libraries\Load_Libraries.xml

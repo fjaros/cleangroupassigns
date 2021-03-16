@@ -1,3 +1,22 @@
+v1.8 - 2021-03-15
+- Import Roster enables pasting in players from docs or spreadsheets separated by commas or spaces.
+  Users can import either in the view of the group window:
+  Player1, Player6
+  Player2, Player7
+  Player3, Player8
+  Player4, Player9
+  Player5, Player10
+
+  Player11, Player12
+  ...
+
+  Or they can paste a separated list such as Player1, Player2, Player3,...
+
+  Thanks to tobbi007 for helping with this contribution!
+
+- Drag & Drop from player bank to groups should be more responsive,
+  aleviating the frustration of dragging a name but have it jump back to the player bank.
+
 v1.7 - 2020-07-21
 - Allow rearranging raid if the raid contains a player not in the arrangement (previously not possible).
 - Automatically uncheck "Show Only Players in Raid" if not in a raid group.

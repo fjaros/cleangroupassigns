@@ -90,17 +90,21 @@ local function FindClass(name)
 	-- try to determine class from guild or group or playerBankDB
 	for i = 1, GetNumGuildMembers() do
 		local tmpName, _, _, _, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
-		tmpName = strsplit("-", tmpName)
-		if name == tmpName then
-			return class
+		if tmpName then
+			tmpName = strsplit("-", tmpName)
+			if name == tmpName then
+				return class
+			end
 		end
 	end
 
 	for i = 1, GetNumGroupMembers() do
 		local tmpName, _, _, _, _, class = GetRaidRosterInfo(i)
-		tmpName = strsplit("-", tmpName)
-		if name == tmpName then
-			return class
+		if tmpName then
+			tmpName = strsplit("-", tmpName)
+			if name == tmpName then
+				return class
+			end
 		end
 	end
 
@@ -348,10 +352,14 @@ function cleangroupassigns:SetLabel(label, name)
 	if name then
 		label.name = name
 		label:SetText(name)
-		local classColor = playerTable[name].classColor
-		label.label:SetTextColor(classColor.r, classColor.g, classColor.b)
-		label.frame:EnableMouse(true)
-		label.frame:SetMovable(true)
+		if playerTable[name] then
+			if playerTable[name].classColor then
+				local classColor = playerTable[name].classColor
+				label.label:SetTextColor(classColor.r, classColor.g, classColor.b)
+			end
+			label.frame:EnableMouse(true)
+			label.frame:SetMovable(true)
+		end
 	else
 		self:ClearLabel(label)
 	end
@@ -378,7 +386,10 @@ function cleangroupassigns:LabelFunctionality(label)
 					if label.row ~= iRow then
 						for iCol = 1, 5 do
 							local cLeft, cTop, cWidth, cHeight = labels[iRow][iCol].frame:GetRect()
-							if x >= cLeft and x <= cLeft + cWidth and y >= cTop and y <= cTop + cHeight then
+							if x >= cLeft - 4
+							and x <= cLeft + cWidth + 4
+							and y >= cTop - 5
+							and y <= cTop + cHeight + 5 then
 								cleangroupassigns:MovedToSubgroup(label, iRow, iCol)
 								return
 							end
@@ -453,11 +464,13 @@ function cleangroupassigns:FillPlayerBank(newlyAddedName)
 	local numGuildMembers = GetNumGuildMembers()
 	for i = 1, numGuildMembers do
 		local name, _, rankIndex, level, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
-		name = strsplit("-", name)
-		if level >= 58 then
-			-- Don't add if is deleted
-			if not playerBankDB[name] or not playerBankDB[name].isDeleted then
-				AddToPlayerTable(name, class, nil, rankIndex + 1)
+		if name then
+			name = strsplit("-", name)
+			if level >= 58 then
+				-- Don't add if is deleted
+				if not playerBankDB[name] or not playerBankDB[name].isDeleted then
+					AddToPlayerTable(name, class, nil, rankIndex + 1)
+				end
 			end
 		end
 	end
@@ -535,9 +548,11 @@ function cleangroupassigns:FillPlayerBank(newlyAddedName)
 						for row = 1, 8 do
 							for col = 1, 5 do
 								local label = labels[row][col]
-								local cLeft, cTop, cWidth, cHeight = labels[row][col].SavedRect
-								if x >= label.savedRect.left and x <= label.savedRect.left + label.savedRect.width and y >= label.savedRect.top and y <= label.savedRect.top + label.savedRect.height then
-									cleangroupassigns:SetLabel(labels[row][col], playerLabel.name)
+								if x >= label.savedRect.left - 4
+								and x <= label.savedRect.left + label.savedRect.width + 4
+								and y >= label.savedRect.top - 5
+								and y <= label.savedRect.top + label.savedRect.height + 5 then
+									cleangroupassigns:SetLabel(label, playerLabel.name)
 									cleangroupassigns:RearrangeGroup(row)
 									return true
 								end
@@ -760,6 +775,21 @@ function cleangroupassigns:CheckArrangable(enteredCombat)
 	self.fetchArrangements.text:SetTextColor(self.fetchArrangements.textColor.r, self.fetchArrangements.textColor.g, self.fetchArrangements.textColor.b)
 	self.currentRaid.text:SetTextColor(self.currentRaid.textColor.r, self.currentRaid.textColor.g, self.currentRaid.textColor.b)
 
+	local duplicatePlayers = {}
+	for row = 1, 8 do
+		for col = 1, 5 do
+			local name = labels[row][col].name
+			if name then
+				if duplicatePlayers[name] then
+					errorMessage = "CANNOT REARRANGE - " .. name .. " IS IN THE ROSTER TWICE"
+					self:SetUnarrangable(errorMessage)
+					return errorMessage
+				end
+				duplicatePlayers[name] = true
+			end
+		end
+	end
+
 	local raidPlayers = GetRaidPlayers()
 	local labelPlayers = {}
 	for row = 1, 8 do
@@ -813,6 +843,82 @@ function cleangroupassigns:RearrangeRaid()
 	inSwap = true
 	swapCounter = 0
 	self:DoSwap()
+end
+
+function cleangroupassigns:ImportArrangement(importDialog, name, text)
+	if name == "" then
+		importDialog:SetStatusText("Choose a roster name!")
+		return
+	end
+	if text == "" then
+		importDialog:SetStatusText("Paste players into the roster!")
+		return
+	end
+
+	local group = 1
+	local slot = 1
+	local importPlayers = {}
+	local newRoster = {}
+	newRoster.name = name
+
+	--[[First try to parse the roster as it will be displayed in the main frame like
+		G1: p1 G2: p6
+			p2     p7
+			p3     p8
+			p4     p9
+			p5     p10
+
+		If the pasted content does not match the above, fall back to importing player 1 - 40 via the usage of any separator
+	]]
+
+	local isGroupOrderedImport = true
+	for line in string.gmatch(text .. "\n", "(.-)\n") do
+		local trimmedLine = string.gsub(strtrim(line, " ,\t\r"), " +", " ")
+		if trimmedLine ~= "" then
+			local importedPlayers = 0
+			for _, player in ipairs({ strsplit(" ,\t", trimmedLine) }) do
+				if player ~= "" then
+					table.insert(importPlayers, player)
+					importedPlayers = importedPlayers + 1
+				end
+			end
+			if importedPlayers > 2 then
+				isGroupOrderedImport = false
+			end
+		end
+	end
+
+	for row = 1, 8 do
+		newRoster[row] = {}
+		for col = 1, 5 do
+			newRoster[row][col] = {}
+			local playerName
+			if isGroupOrderedImport then
+				playerName = importPlayers[math.floor((row - 1) / 2) * 10 + (col * 2 - (row % 2))]
+			else
+				playerName = importPlayers[(row - 1) * 5 + col]
+			end
+			if playerName and playerName ~= "" then
+				local cLen = charLength(playerName)
+				playerName = string.sub(playerName, 1, cLen):upper() .. string.sub(playerName, cLen + 1):lower()
+
+				newRoster[row][col].name = playerName
+				AddToPlayerTable(playerName)
+			end
+		end
+	end
+
+	local found = false
+	for index, arrangement in ipairs(arrangementsDB) do
+		if arrangement.name:upper() == newRoster.name:upper() then
+			arrangementsDB[index] = newRoster
+			found = true
+			break
+		end
+	end
+	if not found then
+		table.insert(arrangementsDB, newRoster)
+	end
 end
 
 function cleangroupassigns:SendInProgress()
@@ -1137,6 +1243,76 @@ function cleangroupassigns:OnEnable()
 		self:InviteRosterToRaid()
 	end)
 
+	self.importRaid = AceGUI:Create("Button")
+	self.importRaid:SetText("Import Roster")
+	self.importRaid.textColor = {}
+	self.importRaid.textColor.r = r
+	self.importRaid.textColor.g = g
+	self.importRaid.textColor.b = b
+	self.importRaid:SetCallback("OnClick", function()
+		if self.importDialog and self.importDialog:IsVisible() then
+			self.importDialog:Show()
+			return
+		end
+		self.importDialog = AceGUI:Create("Frame")
+		self.importDialog:SetWidth(450)
+		self.importDialog:SetHeight(400)
+		self.importDialog:SetPoint("CENTER", self.f.frame)
+		self.importDialog:SetTitle("Import Roster")
+		self.importDialog:SetCallback("OnClose", function(widget)
+			AceGUI:Release(widget)
+			self.importDialog = nil
+		end)
+		self.importDialog.frame:SetFrameStrata("TOOLTIP")
+		self.importDialog:SetLayout("List")
+		_G["cleangroupassignsImportArrangementDialog"] = self.importDialog.frame
+		table.insert(UISpecialFrames, "cleangroupassignsImportArrangementDialog")
+
+		local rosterNameLabel = AceGUI:Create("EditBox")
+		rosterNameLabel:SetLabel("Roster Name:")
+		rosterNameLabel:SetFullWidth(true)
+		rosterNameLabel:DisableButton(true)
+		self.importDialog:AddChild(rosterNameLabel)
+
+		local importedRoster = AceGUI:Create("MultiLineEditBox")
+		importedRoster:SetLabel("Player List:")
+		importedRoster:SetFullWidth(true)
+		importedRoster:DisableButton(true)
+		self.importDialog:AddChild(importedRoster)
+
+		rosterNameLabel:SetCallback("OnEnterPressed", function()
+			importedRoster:SetFocus()
+		end)
+		rosterNameLabel.editbox:SetScript("OnTabPressed", function() -- AceGUI does not support OnTabPressed callback
+			importedRoster:SetFocus()
+		end)
+
+		local buttonImport = AceGUI:Create("Button")
+		buttonImport:SetText("Import")
+		buttonImport:SetWidth(200)
+		buttonImport:SetCallback("OnClick", function()
+			self:ImportArrangement(self.importDialog, rosterNameLabel:GetText(), importedRoster:GetText())
+			self:PopulateArrangements()
+			AceGUI:Release(self.importDialog)
+			self.importDialog = nil
+		end)
+
+		AceGUI:RegisterLayout("ImportArrangementLayout", function()
+			if self.importDialog.frame:GetWidth() < 450 then
+				self.importDialog:SetWidth(450)
+			end
+			if self.importDialog.frame:GetHeight() < 400 then
+				self.importDialog:SetHeight(400)
+			end
+			rosterNameLabel:SetHeight(42)
+			importedRoster:SetHeight(270)
+		end)
+
+		self.importDialog:AddChild(buttonImport)
+		self.importDialog:SetLayout("ImportArrangementLayout")
+		self.importDialog:DoLayout()
+	end)
+
 	self.rearrangeRaid = AceGUI:Create("Button")
 	self.rearrangeRaid:SetText("REARRANGE RAID")
 	self.rearrangeRaid.textColor = {}
@@ -1174,6 +1350,9 @@ function cleangroupassigns:OnEnable()
 		self.inviteToRaid:SetPoint("TOPLEFT", self.currentRaid.frame, "BOTTOMLEFT", 0, -2)
 		self.inviteToRaid:SetWidth(self.currentRaid.frame:GetWidth())
 
+		self.importRaid:SetPoint("TOPLEFT", raidGroups[8].frame, "BOTTOMLEFT", 0, -40)
+		self.importRaid:SetWidth(raidGroups[8].frame:GetWidth())
+
 		self.rearrangeRaid:SetPoint("TOPLEFT", self.inviteToRaid.frame, "BOTTOMLEFT", 0, -2)
 		self.rearrangeRaid:SetWidth(self.currentRaid.frame:GetWidth() * 2 + 2)
 
@@ -1191,6 +1370,7 @@ function cleangroupassigns:OnEnable()
 	self.f:AddChild(self.currentRaid)
 	self.f:AddChild(saveRaid)
 	self.f:AddChild(self.inviteToRaid)
+	self.f:AddChild(self.importRaid)
 	self.f:AddChild(self.rearrangeRaid)
 
 	self.f:SetLayout("MainLayout")
