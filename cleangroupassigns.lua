@@ -20,6 +20,7 @@ local AceGUI = LibStub("AceGUI-3.0")
 local LD = LibStub("LibDeflate")
 local LSM = LibStub("LibSharedMedia-3.0")
 local DEFAULT_FONT = LSM.MediaTable.font[LSM:GetDefault('font')]
+local MIN_LEVEL = 70
 
 local playerTable = {}
 local labels = {}
@@ -466,7 +467,7 @@ function cleangroupassigns:FillPlayerBank(newlyAddedName)
 		local name, _, rankIndex, level, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
 		if name then
 			name = strsplit("-", name)
-			if level >= 58 then
+			if level >= MIN_LEVEL then
 				-- Don't add if is deleted
 				if not playerBankDB[name] or not playerBankDB[name].isDeleted then
 					AddToPlayerTable(name, class, nil, rankIndex + 1)
