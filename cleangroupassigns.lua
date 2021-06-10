@@ -20,7 +20,7 @@ local AceGUI = LibStub("AceGUI-3.0")
 local LD = LibStub("LibDeflate")
 local LSM = LibStub("LibSharedMedia-3.0")
 local DEFAULT_FONT = LSM.MediaTable.font[LSM:GetDefault('font')]
-local MIN_LEVEL = 70
+local MIN_LEVEL = 60
 
 local playerTable = {}
 local labels = {}

@@ -2,7 +2,7 @@
 ## Author: Munchkin-Fairbanks
 ## Notes: World of Warcraft Classic Addon to automatically sort your raid based on your preset arrangements.
 ## Version: 1.9
-## Interface: 20501
+## Interface: 11307
 ## SavedVariables: cgaConfigDB, arrangementsDB, minimapButtonDB, playerBankDB
 
 Libraries\Load_Libraries.xml
