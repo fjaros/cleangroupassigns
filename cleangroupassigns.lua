@@ -439,6 +439,16 @@ function cleangroupassigns:FillCurrentRaid()
 	self:CheckArrangable()
 end
 
+function cleangroupassigns:GetFirstEmpty()
+	for row = 1, 8 do
+		for col = 1, 5 do
+			if not labels[row][col].name then
+				return row, col
+			end
+		end
+	end
+end
+
 function cleangroupassigns:FillPlayerBank(newlyAddedName)
 	if isDraggingLabel then
 		shouldUpdatePlayerBank = true
@@ -511,9 +521,20 @@ function cleangroupassigns:FillPlayerBank(newlyAddedName)
 				playerLabel:SetFont(DEFAULT_FONT, 12)
 				playerLabel:SetHighlight("Interface\\BUTTONS\\UI-Listbox-Highlight.blp")
 				playerLabel:SetFullWidth(true)
+				playerLabel.lastClicked = 0
 				local tmpIndex = index
-				playerLabel:SetCallback("OnClick", function()
-					if GetMouseButtonClicked() == "RightButton" then
+				playerLabel:SetCallback("OnClick", function(self)
+					if GetMouseButtonClicked() == "LeftButton" then
+						if GetTime() - self.lastClicked < 0.5 then
+							local row, col = cleangroupassigns:GetFirstEmpty()
+							if row and col then
+								cleangroupassigns:SetLabel(labels[row][col], self.name)
+								cleangroupassigns:RearrangeGroup(row)
+								cleangroupassigns:FillPlayerBank()
+							end
+						end
+						self.lastClicked = GetTime()
+					elseif GetMouseButtonClicked() == "RightButton" then
 						self.playerBank.dropdownMenu.clickedEntry = tmpIndex
 						self.playerBank.dropdownMenu:Show()
 					end
