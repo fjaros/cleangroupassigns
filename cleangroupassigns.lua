@@ -535,8 +535,8 @@ function cleangroupassigns:FillPlayerBank(newlyAddedName)
 						end
 						self.lastClicked = GetTime()
 					elseif GetMouseButtonClicked() == "RightButton" then
-						self.playerBank.dropdownMenu.clickedEntry = tmpIndex
-						self.playerBank.dropdownMenu:Show()
+						cleangroupassigns.playerBank.dropdownMenu.clickedEntry = tmpIndex
+						cleangroupassigns.playerBank.dropdownMenu:Show()
 					end
 				end)
 
