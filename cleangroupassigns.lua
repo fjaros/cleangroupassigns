@@ -224,7 +224,7 @@ function cleangroupassigns:PopulateArrangements()
 			label.frame:EnableMouse(true)
 		else
 			label = AceGUI:Create("InteractiveLabel")
-			label:SetFont(DEFAULT_FONT, 12)
+			label:SetFont(DEFAULT_FONT, 12, "")
 			label:SetHighlight("Interface\\Buttons\\UI-Listbox-Highlight")
 			label:SetFullWidth(true)
 			label.OnClick = function()
@@ -518,7 +518,7 @@ function cleangroupassigns:FillPlayerBank(newlyAddedName)
 				playerLabel.frame:EnableMouse(true)
 			else
 				playerLabel = AceGUI:Create("InteractiveLabel")
-				playerLabel:SetFont(DEFAULT_FONT, 12)
+				playerLabel:SetFont(DEFAULT_FONT, 12, "")
 				playerLabel:SetHighlight("Interface\\BUTTONS\\UI-Listbox-Highlight.blp")
 				playerLabel:SetFullWidth(true)
 				playerLabel.lastClicked = 0
@@ -1156,7 +1156,7 @@ function cleangroupassigns:OnEnable()
 		for col = 1, 5 do
 			labels[row][col] = AceGUI:Create("InteractiveLabel")
 			local label = labels[row][col]
-			label:SetFont(DEFAULT_FONT, 12)
+			label:SetFont(DEFAULT_FONT, 12, "")
 			label:SetJustifyH("CENTER")
 			label.row = row
 			label.col = col
